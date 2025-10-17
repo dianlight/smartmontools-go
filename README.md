@@ -226,6 +226,15 @@ Badge (shows current GitHub Actions status):
 
 ![CI](https://github.com/dianlight/smartmontools-go/actions/workflows/ci.yml/badge.svg)
 
+Coverage badge (Codecov):
+
+[![Coverage Status](https://codecov.io/gh/dianlight/smartmontools-go/branch/main/graph/badge.svg?token=)](https://codecov.io/gh/dianlight/smartmontools-go)
+
+Releases:
+
+![Stable Release](https://img.shields.io/github/v/release/dianlight/smartmontools-go)
+![Prerelease](https://img.shields.io/github/v/release/dianlight/smartmontools-go?include_prereleases)
+
 Quick Makefile usage:
 
 - Run tests: `make test`
