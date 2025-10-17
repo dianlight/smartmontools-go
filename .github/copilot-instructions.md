@@ -1,5 +1,22 @@
 # Copilot Instructions
 
+## General Guidelines
+- Write clear, maintainable, and efficient code.
+- Follow best practices and coding standards for the specific programming language.
+- Ensure code is well-documented with comments where necessary.
+- Prioritize readability and simplicity.
+- Consider edge cases and error handling.
+- Write modular code that can be easily tested and reused.
+- Create tests to verify the functionality of the code.
+- Maintain a test coverage of at least 80%.
+
+## Unit Tests
+
+When generating unit tests, ensure that:
+- Tests cover both typical and edge cases.
+- Mocks or stubs are used for external dependencies.
+- Tests are named clearly to indicate their purpose.
+
 ## Commit Messages
 
 When suggesting commit messages, always follow the conventional commit format combined with gitmoji emojis from https://gitmoji.dev/.
