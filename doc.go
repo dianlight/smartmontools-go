@@ -20,15 +20,18 @@ idiomatic Go API for accessing SMART information from storage devices.
 This library requires smartctl (part of smartmontools) to be installed:
 
 Linux:
-    sudo apt-get install smartmontools  # Debian/Ubuntu
-    sudo yum install smartmontools       # RHEL/CentOS/Fedora
-    sudo pacman -S smartmontools         # Arch Linux
+
+	sudo apt-get install smartmontools  # Debian/Ubuntu
+	sudo yum install smartmontools       # RHEL/CentOS/Fedora
+	sudo pacman -S smartmontools         # Arch Linux
 
 macOS:
-    brew install smartmontools
+
+	brew install smartmontools
 
 Windows:
-    Download from https://www.smartmontools.org/
+
+	Download from https://www.smartmontools.org/
 
 # Basic Usage
 
