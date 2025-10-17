@@ -9,6 +9,24 @@ import (
 	"strings"
 )
 
+// Commander interface for executing commands
+type Commander interface {
+	Command(name string, arg ...string) Cmd
+}
+
+// Cmd interface for command execution
+type Cmd interface {
+	Output() ([]byte, error)
+	Run() error
+}
+
+// execCommander implements Commander using os/exec
+type execCommander struct{}
+
+func (e execCommander) Command(name string, arg ...string) Cmd {
+	return exec.Command(name, arg...)
+}
+
 // Device represents a storage device
 type Device struct {
 	Name string
@@ -104,6 +122,7 @@ type PowerOnTime struct {
 // Client represents a smartmontools client
 type Client struct {
 	smartctlPath string
+	commander    Commander
 }
 
 // NewClient creates a new smartmontools client
@@ -116,6 +135,7 @@ func NewClient() (*Client, error) {
 
 	return &Client{
 		smartctlPath: path,
+		commander:    execCommander{},
 	}, nil
 }
 
@@ -123,12 +143,21 @@ func NewClient() (*Client, error) {
 func NewClientWithPath(smartctlPath string) *Client {
 	return &Client{
 		smartctlPath: smartctlPath,
+		commander:    execCommander{},
+	}
+}
+
+// NewClientWithCommander creates a new client with a custom commander (for testing)
+func NewClientWithCommander(smartctlPath string, commander Commander) *Client {
+	return &Client{
+		smartctlPath: smartctlPath,
+		commander:    commander,
 	}
 }
 
 // ScanDevices scans for available storage devices
 func (c *Client) ScanDevices() ([]Device, error) {
-	cmd := exec.Command(c.smartctlPath, "--scan-open", "--json")
+	cmd := c.commander.Command(c.smartctlPath, "--scan-open", "--json")
 	output, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("failed to scan devices: %w", err)
@@ -158,7 +187,7 @@ func (c *Client) ScanDevices() ([]Device, error) {
 
 // GetSMARTInfo retrieves SMART information for a device
 func (c *Client) GetSMARTInfo(devicePath string) (*SMARTInfo, error) {
-	cmd := exec.Command(c.smartctlPath, "-a", "-j", devicePath)
+	cmd := c.commander.Command(c.smartctlPath, "-a", "-j", devicePath)
 	output, err := cmd.Output()
 	if err != nil {
 		// smartctl returns non-zero exit codes for various conditions
@@ -183,7 +212,7 @@ func (c *Client) GetSMARTInfo(devicePath string) (*SMARTInfo, error) {
 
 // CheckHealth checks if a device is healthy according to SMART
 func (c *Client) CheckHealth(devicePath string) (bool, error) {
-	cmd := exec.Command(c.smartctlPath, "-H", devicePath)
+	cmd := c.commander.Command(c.smartctlPath, "-H", devicePath)
 	output, err := cmd.Output()
 	if err != nil {
 		// Exit code 0: healthy, non-zero may indicate issues
@@ -204,7 +233,7 @@ func (c *Client) CheckHealth(devicePath string) (bool, error) {
 
 // GetDeviceInfo retrieves basic device information
 func (c *Client) GetDeviceInfo(devicePath string) (map[string]interface{}, error) {
-	cmd := exec.Command(c.smartctlPath, "-i", "-j", devicePath)
+	cmd := c.commander.Command(c.smartctlPath, "-i", "-j", devicePath)
 	output, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get device info: %w", err)
@@ -232,7 +261,7 @@ func (c *Client) RunSelfTest(devicePath string, testType string) error {
 		return fmt.Errorf("invalid test type: %s (must be one of: short, long, conveyance, offline)", testType)
 	}
 
-	cmd := exec.Command(c.smartctlPath, "-t", testType, devicePath)
+	cmd := c.commander.Command(c.smartctlPath, "-t", testType, devicePath)
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("failed to run self-test: %w", err)
 	}
