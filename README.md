@@ -1,3 +1,7 @@
+> ⚠️ IMPORTANT — Very early development
+
+> This project is in very early development. The current implementation executes the external `smartctl` binary (via exec) and parses its output. It does NOT currently provide native Go bindings, direct ioctl integration, or libgoffi-based integration. Those integrations are planned for future releases. Use this library for experimentation only.
+
 # smartmontools-go
 
 A Go library that interfaces with smartmontools to monitor and manage storage device health using S.M.A.R.T. (Self-Monitoring, Analysis, and Reporting Technology) data.
@@ -164,9 +168,46 @@ This library uses a command-line wrapper approach, executing `smartctl` commands
 
 While the project references libgoffi in its description, the current implementation uses the command-line interface for maximum compatibility and reliability. Future versions may incorporate direct library bindings using libgoffi for enhanced performance.
 
+## Implementation details
+
+- Execution model: the library locates (or is given) a `smartctl` binary and executes it (os/exec). Commands use `--json` where available and the library parses the resulting JSON output.
+- Configurable path: you can pass a custom path with `NewClientWithPath(path string)` if `smartctl` is not on PATH or you want to use a specific binary.
+- Permissions: many SMART operations require root/administrator privileges or appropriate device access. Expect `permission denied` errors when running without sufficient rights.
+- Error handling: the library returns errors when `smartctl` exits non-zero, when JSON parsing fails, or when required fields are missing. Consumers should inspect errors and possibly the wrapped `*exec.ExitError` for diagnostics.
+- Limitations: because this approach shells out to an external binary, it has higher process overhead and depends on the installed smartmontools version and platform support. It does not (yet) provide direct ioctl access or in-process bindings.
+
+Example command run by the library (illustrative):
+
+```text
+smartctl --json -a /dev/sda
+```
+
+This will be parsed into the library's `SMARTInfo` structures.
+
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
+
+## Roadmap
+
+Short-term (current):
+- Stabilize the exec-based API surface (ScanDevices, GetSMARTInfo, CheckHealth, RunSelfTest).
+- Improve error messages and diagnostics when `smartctl` is missing, incompatible, or returns non-JSON output.
+- Add more unit tests that mock `smartctl` JSON output.
+
+Mid-term:
+- Add optional libgoffi-based bindings to call smartmontools in-process where supported.
+- Implement ioctl-based device access for platforms where direct calls are preferable and safe.
+- Provide clearer compatibility matrix and CI jobs for Linux/macOS/Windows.
+
+Long-term:
+- Offer a native Go implementation/path that does not require an external `smartctl` binary for common operations.
+- Optimize performance and reduce process creation overhead for large-scale monitoring setups.
+
+How to help:
+- If you'd like to work on native bindings, start by opening an issue describing the platform and approach (libgoffi vs ioctl-first).
+- Add tests that include representative `smartctl --json` outputs (captured from different smartmontools versions/devices).
+- Document platform-specific permission and packaging notes (e.g., macOS notarization, Windows admin requirements).
 
 ## License
 
