@@ -1,9 +1,11 @@
 package smartmontools
 
 import (
+	"context"
 	"errors"
 	"os/exec"
 	"testing"
+	"time"
 )
 
 // mockCmd implements Cmd interface for testing
@@ -290,6 +292,71 @@ func TestRunSelfTestInvalidType(t *testing.T) {
 	err := client.RunSelfTest("/dev/sda", "invalid")
 	if err == nil {
 		t.Error("Expected error for invalid test type")
+	}
+}
+
+func TestRunSelfTestWithProgressInvalidType(t *testing.T) {
+	client := NewClientWithPath("/usr/sbin/smartctl")
+
+	ctx := context.Background()
+	err := client.RunSelfTestWithProgress(ctx, "/dev/sda", "invalid", nil)
+	if err == nil {
+		t.Error("Expected error for invalid test type")
+	}
+}
+
+func TestRunSelfTestWithProgress(t *testing.T) {
+	// Mock SMART info with ATA device supporting self-tests and completed status
+	mockJSON := `{
+		"device": {"name": "/dev/sda", "type": "ata"},
+		"ata_smart_data": {
+			"capabilities": {
+				"exec_offline_immediate_supported": true
+			},
+			"self_test": {
+				"status": "completed",
+				"polling_minutes": 2
+			}
+		}
+	}`
+
+	commander := &mockCommander{
+		cmds: map[string]*mockCmd{
+			"/usr/sbin/smartctl -a -j /dev/sda":    {output: []byte(mockJSON)},
+			"/usr/sbin/smartctl -t short /dev/sda": {},
+		},
+	}
+
+	client := NewClientWithCommander("/usr/sbin/smartctl", commander)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	var progressCalled bool
+	var finalProgress int
+	var finalStatus string
+
+	callback := func(progress int, status string) {
+		progressCalled = true
+		finalProgress = progress
+		finalStatus = status
+	}
+
+	err := client.RunSelfTestWithProgress(ctx, "/dev/sda", "short", callback)
+	if err != nil {
+		t.Errorf("Expected no error, got %v", err)
+	}
+
+	if !progressCalled {
+		t.Error("Expected progress callback to be called")
+	}
+
+	if finalProgress != 100 {
+		t.Errorf("Expected final progress 100, got %d", finalProgress)
+	}
+
+	if finalStatus != "Self-test completed" {
+		t.Errorf("Expected final status 'Self-test completed', got '%s'", finalStatus)
 	}
 }
 

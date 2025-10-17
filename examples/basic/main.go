@@ -166,7 +166,7 @@ func main() {
 		}
 	}
 
-	err = client.RunShortSelfTestWithProgress(ctx, devicePath, progressCallback)
+	err = client.RunSelfTestWithProgress(ctx, devicePath, "short", progressCallback)
 	if err != nil {
 		if strings.Contains(err.Error(), "not supported") {
 			fmt.Println(yellow(fmt.Sprintf("\nNote: Self-tests are not supported by this device (%s)", devicePath)))

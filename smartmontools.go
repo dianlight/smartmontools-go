@@ -346,8 +346,20 @@ func (c *Client) RunSelfTest(devicePath string, testType string) error {
 // ProgressCallback is a function type for reporting progress
 type ProgressCallback func(progress int, status string)
 
-// RunShortSelfTestWithProgress starts a short SMART self-test and reports progress
-func (c *Client) RunShortSelfTestWithProgress(ctx context.Context, devicePath string, callback ProgressCallback) error {
+// RunSelfTestWithProgress starts a SMART self-test and reports progress
+func (c *Client) RunSelfTestWithProgress(ctx context.Context, devicePath string, testType string, callback ProgressCallback) error {
+	// Valid test types: short, long, conveyance, offline
+	validTypes := map[string]bool{
+		"short":      true,
+		"long":       true,
+		"conveyance": true,
+		"offline":    true,
+	}
+
+	if !validTypes[testType] {
+		return fmt.Errorf("invalid test type: %s (must be one of: short, long, conveyance, offline)", testType)
+	}
+
 	// First check if self-tests are supported
 	smartInfo, err := c.GetSMARTInfo(devicePath)
 	if err != nil {
@@ -369,17 +381,24 @@ func (c *Client) RunShortSelfTestWithProgress(ctx context.Context, devicePath st
 		return fmt.Errorf("self-tests are not supported by this device")
 	}
 
-	// Start the short self-test
-	if err := c.RunSelfTest(devicePath, "short"); err != nil {
-		return fmt.Errorf("failed to start short self-test: %w", err)
+	// Start the self-test
+	if err := c.RunSelfTest(devicePath, testType); err != nil {
+		return fmt.Errorf("failed to start %s self-test: %w", testType, err)
 	}
 
 	if callback != nil {
-		callback(0, "Short self-test started")
+		callback(0, fmt.Sprintf("%s self-test started", strings.Title(testType)))
 	}
 
-	// Get initial SMART info to determine expected duration
-	expectedMinutes := 2 // default for short test
+	// Get expected duration based on test type
+	expectedMinutes := map[string]int{
+		"short":      2,
+		"long":       120,
+		"conveyance": 5,
+		"offline":    10,
+	}[testType]
+
+	// Use polling minutes from SMART info if available (for ATA)
 	if smartInfo.AtaSmartData != nil && smartInfo.AtaSmartData.SelfTest != nil {
 		if smartInfo.AtaSmartData.SelfTest.PollingMinutes > 0 {
 			expectedMinutes = smartInfo.AtaSmartData.SelfTest.PollingMinutes
