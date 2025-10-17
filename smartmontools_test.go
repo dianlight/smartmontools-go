@@ -45,7 +45,8 @@ func TestNewClient(t *testing.T) {
 		t.Skip("smartctl not found in PATH, skipping test")
 	}
 
-	if client.smartctlPath == "" {
+	c := client.(*Client)
+	if c.smartctlPath == "" {
 		t.Error("Expected smartctlPath to be set")
 	}
 }
@@ -54,8 +55,9 @@ func TestNewClientWithPath(t *testing.T) {
 	testPath := "/usr/sbin/smartctl"
 	client := NewClientWithPath(testPath)
 
-	if client.smartctlPath != testPath {
-		t.Errorf("Expected smartctlPath to be %s, got %s", testPath, client.smartctlPath)
+	c := client.(*Client)
+	if c.smartctlPath != testPath {
+		t.Errorf("Expected smartctlPath to be %s, got %s", testPath, c.smartctlPath)
 	}
 }
 

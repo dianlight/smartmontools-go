@@ -206,6 +206,21 @@ type SmartctlInfo struct {
 	ExitStatus int       `json:"exit_status,omitempty"`
 }
 
+// SmartClient interface defines the methods for interacting with smartmontools
+type SmartClient interface {
+	ScanDevices() ([]Device, error)
+	GetSMARTInfo(devicePath string) (*SMARTInfo, error)
+	CheckHealth(devicePath string) (bool, error)
+	GetDeviceInfo(devicePath string) (map[string]interface{}, error)
+	RunSelfTest(devicePath string, testType string) error
+	RunSelfTestWithProgress(ctx context.Context, devicePath string, testType string, callback ProgressCallback) error
+	GetAvailableSelfTests(devicePath string) (*SelfTestInfo, error)
+	IsSMARTSupported(devicePath string) (*SMARTSupportInfo, error)
+	EnableSMART(devicePath string) error
+	DisableSMART(devicePath string) error
+	AbortSelfTest(devicePath string) error
+}
+
 // Client represents a smartmontools client
 type Client struct {
 	smartctlPath string
@@ -213,7 +228,7 @@ type Client struct {
 }
 
 // NewClient creates a new smartmontools client
-func NewClient() (*Client, error) {
+func NewClient() (SmartClient, error) {
 	// Try to find smartctl in PATH
 	path, err := exec.LookPath("smartctl")
 	if err != nil {
@@ -227,7 +242,7 @@ func NewClient() (*Client, error) {
 }
 
 // NewClientWithPath creates a new smartmontools client with a specific smartctl path
-func NewClientWithPath(smartctlPath string) *Client {
+func NewClientWithPath(smartctlPath string) SmartClient {
 	return &Client{
 		smartctlPath: smartctlPath,
 		commander:    execCommander{},
@@ -235,7 +250,7 @@ func NewClientWithPath(smartctlPath string) *Client {
 }
 
 // NewClientWithCommander creates a new client with a custom commander (for testing)
-func NewClientWithCommander(smartctlPath string, commander Commander) *Client {
+func NewClientWithCommander(smartctlPath string, commander Commander) SmartClient {
 	return &Client{
 		smartctlPath: smartctlPath,
 		commander:    commander,
