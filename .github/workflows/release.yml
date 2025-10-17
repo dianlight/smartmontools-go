@@ -1,67 +1,206 @@
 name: Release
 
 on:
-    push:
-        tags:
-            - "v*"
-            - "pre-*"
+  push:
+    tags:
+      - 'v*'
+      - 'pre-*'
 
 jobs:
-    build-artifacts:
-        runs-on: ubuntu-latest
-        strategy:
-            matrix:
-                os: [linux, darwin, windows]
-                arch: [amd64, arm64]
-        outputs:
-            artifact-path: ${{ steps.set-artifact.outputs.path }}
-        steps:
-            - name: Checkout
-              uses: actions/checkout@v4
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        os: [linux, darwin, windows]
+        arch: [amd64, arm64]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
-            - name: Set up Go
-              uses: actions/setup-go@v4
-              with:
-                  go-version: "1.20"
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.20'
 
-            - name: Prepare build info
-              id: set-artifact
-              run: |
-                  OS=${{ matrix.os }}
-                  ARCH=${{ matrix.arch }}
-                  BASE_NAME=smartmontools-go
-                  if [ "${OS}" = "windows" ]; then EXT=.exe; else EXT=; fi
-                  ARTNAME=${BASE_NAME}_${OS}_${ARCH}${EXT}
-                  echo "::set-output name=path::${ARTNAME}"
+      - name: Build
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          OUT=dist/smartmontools-go_${{ matrix.os }}_${{ matrix.arch }}
+          if [ "${{ matrix.os }}" = "windows" ]; then OUT=${OUT}.exe; fi
+          GOOS=${{ matrix.os }} GOARCH=${{ matrix.arch }} go build -ldflags "-s -w" -o ${OUT}
+          zip -j dist/smartmontools-go_${{ matrix.os }}_${{ matrix.arch }}.zip ${OUT}
 
-            - name: Build
-              run: |
-                  set -euo pipefail
-                  mkdir -p dist
-                  GOOS=${{ matrix.os }} GOARCH=${{ matrix.arch }} go build -ldflags "-s -w" -o dist/smartmontools-go_${{ matrix.os }}_${{ matrix.arch }}
-                  if [ "${{ matrix.os }}" = "windows" ]; then zip -j dist/smartmontools-go_${{ matrix.os }}_${{ matrix.arch }}.zip dist/smartmontools-go_${{ matrix.os }}_${{ matrix.arch }}; rm dist/smartmontools-go_${{ matrix.os }}_${{ matrix.arch }}; else zip -j dist/smartmontools-go_${{ matrix.os }}_${{ matrix.arch }}.zip dist/smartmontools-go_${{ matrix.os }}_${{ matrix.arch }}; fi
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: smartmontools-go-${{ matrix.os }}-${{ matrix.arch }}
+          path: dist/*.zip
 
-            - name: Upload artifact
-              uses: actions/upload-artifact@v4
-              with:
-                  name: smartmontools-go-${{ matrix.os }}-${{ matrix.arch }}
-                  path: dist/*.zip
+  collect-and-release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
 
-    create-release:
-        needs: build-artifacts
-        runs-on: ubuntu-latest
-        steps:
-            - name: Download all artifacts
-              uses: actions/download-artifact@v4
-              with:
-                  path: release-assets
+      - name: Generate release notes
+        id: release_notes
+        run: |
+          TAG=${GITHUB_REF#refs/tags/}
+          PREV_TAG=$(git describe --tags --abbrev=0 ${GITHUB_REF}^ 2>/dev/null || true)
+          if [ -n "$PREV_TAG" ]; then
+            git --no-pager log ${PREV_TAG}..${TAG} --pretty=format:"- %s (%h)" > notes.txt
+          else
+            git --no-pager log --pretty=format:"- %s (%h)" > notes.txt
+          fi
+          echo "notes<<EOF" >> $GITHUB_OUTPUT
+          name: Release
 
-            - name: Create GitHub Release and upload assets
-              uses: softprops/action-gh-release@v1
-              with:
-                  files: release-assets/*
-                  tag_name: ${{ github.ref }}
-                  name: ${{ github.ref }}
-                  prerelease: ${{ startsWith(github.ref, 'refs/tags/pre-') }}
-              env:
-                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          on:
+            push:
+              tags:
+                - 'v*'
+                - 'pre-*'
+
+          jobs:
+            build:
+              runs-on: ubuntu-latest
+              strategy:
+                matrix:
+                  os: [linux, darwin, windows]
+                  arch: [amd64, arm64]
+              steps:
+                - name: Checkout
+                  uses: actions/checkout@v4
+
+                - name: Set up Go
+                  uses: actions/setup-go@v4
+                  with:
+                    go-version: '1.20'
+
+                - name: Build
+                  run: |
+                    set -euo pipefail
+                    mkdir -p dist
+                    OUT=dist/smartmontools-go_${{ matrix.os }}_${{ matrix.arch }}
+                    if [ "${{ matrix.os }}" = "windows" ]; then OUT=${OUT}.exe; fi
+                    GOOS=${{ matrix.os }} GOARCH=${{ matrix.arch }} go build -ldflags "-s -w" -o ${OUT}
+                    zip -j dist/smartmontools-go_${{ matrix.os }}_${{ matrix.arch }}.zip ${OUT}
+
+                - name: Upload artifact
+                  uses: actions/upload-artifact@v4
+                  with:
+                    name: smartmontools-go-${{ matrix.os }}-${{ matrix.arch }}
+                    path: dist/smartmontools-go_${{ matrix.os }}_${{ matrix.arch }}.zip
+
+            collect-and-release:
+              needs: build
+              runs-on: ubuntu-latest
+              steps:
+                - name: Checkout
+                  uses: actions/checkout@v4
+
+                - name: Download artifacts
+                  uses: actions/download-artifact@v4
+                  with:
+                    path: release-assets
+
+                - name: Generate release notes
+                  id: release_notes
+                  run: |
+                    TAG=${GITHUB_REF#refs/tags/}
+                    PREV_TAG=$(git describe --tags --abbrev=0 ${GITHUB_REF}^ 2>/dev/null || true)
+                    if [ -n "$PREV_TAG" ]; then
+                      git --no-pager log ${PREV_TAG}..${TAG} --pretty=format:"- %s (%h)" > notes.txt
+                    else
+                      git --no-pager log --pretty=format:"- %s (%h)" > notes.txt
+                    fi
+                    echo "notes<<EOF" >> $GITHUB_OUTPUT
+                    cat notes.txt >> $GITHUB_OUTPUT
+                    echo "EOF" >> $GITHUB_OUTPUT
+
+                - name: Optionally sign artifacts with cosign
+                  if: ${{ secrets.COSIGN_KEY && secrets.COSIGN_PASSWORD }}
+                  env:
+                    COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
+                  run: |
+                    echo "Installing cosign..."
+                    curl -sL "https://github.com/sigstore/cosign/releases/latest/download/cosign-linux-amd64" -o cosign
+                    chmod +x cosign
+                    sudo mv cosign /usr/local/bin/cosign
+                    for f in release-assets/*.zip; do
+                      echo "Signing $f"
+                      echo "$COSIGN_PASSWORD" | cosign sign-blob --key ${{ secrets.COSIGN_KEY }} --password-stdin $f > ${f}.sig || true
+                      cosign verify-blob --key ${{ secrets.COSIGN_KEY }} $f || true
+                    done
+
+                - name: Create GitHub Release (draft) and upload assets
+                  uses: softprops/action-gh-release@v1
+                  with:
+                    files: release-assets/*
+                    tag_name: ${{ github.ref_name }}
+                    name: ${{ github.ref_name }}
+                    prerelease: ${{ startsWith(github.ref, 'refs/tags/pre-') }}
+                    draft: true
+                    body: ${{ steps.release_notes.outputs.notes }}
+                  env:
+                    GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+                      with:
+                        name: smartmontools-go-${{ matrix.os }}-${{ matrix.arch }}
+                        path: dist/smartmontools-go_${{ matrix.os }}_${{ matrix.arch }}.zip
+
+                collect-and-release:
+                  needs: build
+                  runs-on: ubuntu-latest
+                  steps:
+                    - name: Checkout
+                      uses: actions/checkout@v4
+
+                    - name: Download artifacts
+                      uses: actions/download-artifact@v4
+                      with:
+                        path: release-assets
+
+                    - name: Generate release notes
+                      id: release_notes
+                      run: |
+                        TAG=${GITHUB_REF#refs/tags/}
+                        PREV_TAG=$(git describe --tags --abbrev=0 ${GITHUB_REF}^ 2>/dev/null || true)
+                        if [ -n "$PREV_TAG" ]; then
+                          git --no-pager log ${PREV_TAG}..${TAG} --pretty=format:"- %s (%h)" > notes.txt
+                        else
+                          git --no-pager log --pretty=format:"- %s (%h)" > notes.txt
+                        fi
+                        echo "notes<<EOF" >> $GITHUB_OUTPUT
+                        cat notes.txt >> $GITHUB_OUTPUT
+                        echo "EOF" >> $GITHUB_OUTPUT
+
+                    - name: Optionally sign artifacts with cosign
+                      if: ${{ secrets.COSIGN_KEY && secrets.COSIGN_PASSWORD }}
+                      env:
+                        COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
+                      run: |
+                        echo "Installing cosign..."
+                        curl -sL "https://github.com/sigstore/cosign/releases/latest/download/cosign-linux-amd64" -o cosign
+                        chmod +x cosign
+                        sudo mv cosign /usr/local/bin/cosign
+                        for f in release-assets/*.zip; do
+                          echo "Signing $f"
+                          echo "$COSIGN_PASSWORD" | cosign sign-blob --key ${{ secrets.COSIGN_KEY }} --password-stdin $f > ${f}.sig || true
+                          cosign verify-blob --key ${{ secrets.COSIGN_KEY }} $f || true
+                        done
+
+                    - name: Create GitHub Release and upload assets
+                      uses: softprops/action-gh-release@v1
+                      with:
+                        files: release-assets/*
+                        tag_name: ${{ github.ref_name }}
+                        name: ${{ github.ref_name }}
+                        prerelease: ${{ startsWith(github.ref, 'refs/tags/pre-') }}
+                        body: ${{ steps.release_notes.outputs.notes }}
+                      env:
+                        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
