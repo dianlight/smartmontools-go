@@ -17,7 +17,7 @@ endif
 # staticcheck binary path (either on PATH or in GOBIN)
 STATICCHECK := $(or $(shell command -v staticcheck 2>/dev/null),$(GOBIN)/staticcheck)
 
-.PHONY: help build test coverage fmt vet lint tidy mod-download run-example clean
+.PHONY: help build test coverage fmt vet lint tidy mod-download run-example release prerelease clean
 
 help:
 	@echo "Makefile for smartmontools-go"
@@ -31,6 +31,8 @@ help:
 	@echo "  tidy           Run go mod tidy"
 	@echo "  mod-download   Download modules (go mod download)"
 	@echo "  run-example    Run the example in examples/basic"
+	@echo "  release        Create and push a release tag (usage: make release [VERSION_TYPE=major|minor|patch])"
+	@echo "  prerelease     Create and push a prerelease tag (usage: make prerelease [VERSION_TYPE=major|minor|patch])"
 	@echo "  clean          Remove build artifacts"
 
 test:
@@ -88,6 +90,48 @@ mod-download:
 run-example:
 	@echo "Running examples/basic..."
 	@cd examples/basic && $(GOCMD) run ./
+
+release:
+	@VERSION_TYPE=$(or $(VERSION_TYPE), patch); \
+	CURRENT_TAG=$$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0"); \
+	CURRENT_VERSION=$$(echo $$CURRENT_TAG | sed 's/^v//' | sed 's/-.*//'); \
+	MAJOR=$$(echo $$CURRENT_VERSION | cut -d. -f1); \
+	MINOR=$$(echo $$CURRENT_VERSION | cut -d. -f2); \
+	PATCH=$$(echo $$CURRENT_VERSION | cut -d. -f3); \
+	case $$VERSION_TYPE in \
+		major) NEW_MAJOR=$$((MAJOR + 1)); NEW_MINOR=0; NEW_PATCH=0 ;; \
+		minor) NEW_MAJOR=$$MAJOR; NEW_MINOR=$$((MINOR + 1)); NEW_PATCH=0 ;; \
+		patch) NEW_MAJOR=$$MAJOR; NEW_MINOR=$$MINOR; NEW_PATCH=$$((PATCH + 1)) ;; \
+		*) echo "Invalid VERSION_TYPE: $$VERSION_TYPE"; exit 1 ;; \
+	esac; \
+	NEW_TAG=v$$NEW_MAJOR.$$NEW_MINOR.$$NEW_PATCH; \
+	echo "Creating release tag $$NEW_TAG"; \
+	git tag $$NEW_TAG && git push origin $$NEW_TAG
+
+prerelease:
+	@VERSION_TYPE=$(or $(VERSION_TYPE), patch); \
+	CURRENT_TAG=$$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0"); \
+	HAS_PRERELEASE=$$(echo $$CURRENT_TAG | grep -c '-'); \
+	if [ $$HAS_PRERELEASE -eq 1 ]; then \
+		PRERELEASE_PART=$$(echo $$CURRENT_TAG | sed 's/.*-//'); \
+		N=$$(echo $$PRERELEASE_PART | cut -d. -f2); \
+		NEW_N=$$((N + 1)); \
+		NEW_TAG=$$(echo $$CURRENT_TAG | sed "s/\.[0-9]*$$/\.$$NEW_N/"); \
+	else \
+		CURRENT_VERSION=$$(echo $$CURRENT_TAG | sed 's/^v//' | sed 's/-.*//'); \
+		MAJOR=$$(echo $$CURRENT_VERSION | cut -d. -f1); \
+		MINOR=$$(echo $$CURRENT_VERSION | cut -d. -f2); \
+		PATCH=$$(echo $$CURRENT_VERSION | cut -d. -f3); \
+		case $$VERSION_TYPE in \
+			major) NEW_MAJOR=$$((MAJOR + 1)); NEW_MINOR=0; NEW_PATCH=0 ;; \
+			minor) NEW_MAJOR=$$MAJOR; NEW_MINOR=$$((MINOR + 1)); NEW_PATCH=0 ;; \
+			patch) NEW_MAJOR=$$MAJOR; NEW_MINOR=$$MINOR; NEW_PATCH=$$((PATCH + 1)) ;; \
+			*) echo "Invalid VERSION_TYPE: $$VERSION_TYPE"; exit 1 ;; \
+		esac; \
+		NEW_TAG=v$$NEW_MAJOR.$$NEW_MINOR.$$NEW_PATCH-beta.0; \
+	fi; \
+	echo "Creating prerelease tag $$NEW_TAG"; \
+	git tag $$NEW_TAG && git push origin $$NEW_TAG
 
 clean:
 	@echo "Cleaning..."
