@@ -459,10 +459,25 @@ func (c *Client) RunSelfTestWithProgress(ctx context.Context, devicePath string,
 					return nil
 				}
 
-				// Calculate progress based on elapsed time vs expected duration
-				progress := (elapsed * 100) / (expectedMinutes * 60)
-				if progress > 95 {
-					progress = 95 // Don't show 100% until actually completed
+				// Try to get progress from Self-test execution status attribute (ID 231)
+				progress := -1
+				if currentInfo.AtaSmartData.Table != nil {
+					for _, attr := range currentInfo.AtaSmartData.Table {
+						if attr.ID == 231 {
+							progress = attr.Value
+							if progress > 100 {
+								progress = 100
+							}
+							break
+						}
+					}
+				}
+				if progress == -1 {
+					// Calculate progress based on elapsed time vs expected duration
+					progress = (elapsed * 100) / (expectedMinutes * 60)
+					if progress > 95 {
+						progress = 95 // Don't show 100% until actually completed
+					}
 				}
 
 				if callback != nil {
