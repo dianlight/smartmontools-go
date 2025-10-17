@@ -80,6 +80,7 @@ type SMARTInfo struct {
 	Temperature                *Temperature                `json:"temperature,omitempty"`
 	PowerOnTime                *PowerOnTime                `json:"power_on_time,omitempty"`
 	PowerCycleCount            int                         `json:"power_cycle_count,omitempty"`
+	Smartctl                   *SmartctlInfo               `json:"smartctl,omitempty"`
 }
 
 // SmartStatus represents the overall SMART health status
@@ -165,6 +166,19 @@ type PowerOnTime struct {
 	Hours int `json:"hours"`
 }
 
+// Message represents a message from smartctl
+type Message struct {
+	String   string `json:"string"`
+	Severity string `json:"severity,omitempty"`
+}
+
+// SmartctlInfo represents smartctl metadata and messages
+type SmartctlInfo struct {
+	Version    []int     `json:"version,omitempty"`
+	Messages   []Message `json:"messages,omitempty"`
+	ExitStatus int       `json:"exit_status,omitempty"`
+}
+
 // Client represents a smartmontools client
 type Client struct {
 	smartctlPath string
@@ -243,6 +257,12 @@ func (c *Client) GetSMARTInfo(devicePath string) (*SMARTInfo, error) {
 			if json.Unmarshal(output, &smartInfo) == nil {
 				// Valid JSON, treat error as warning
 				slog.Warn("smartctl returned error but provided valid JSON output", "error", err)
+				// Check for error messages in the output
+				if smartInfo.Smartctl != nil && len(smartInfo.Smartctl.Messages) > 0 {
+					for _, msg := range smartInfo.Smartctl.Messages {
+						slog.Warn("smartctl message", "severity", msg.Severity, "message", msg.String)
+					}
+				}
 				return &smartInfo, nil
 			}
 		}
@@ -252,6 +272,13 @@ func (c *Client) GetSMARTInfo(devicePath string) (*SMARTInfo, error) {
 	var smartInfo SMARTInfo
 	if err := json.Unmarshal(output, &smartInfo); err != nil {
 		return nil, fmt.Errorf("failed to parse SMART info: %w", err)
+	}
+
+	// Check for messages in the output even when command succeeded
+	if smartInfo.Smartctl != nil && len(smartInfo.Smartctl.Messages) > 0 {
+		for _, msg := range smartInfo.Smartctl.Messages {
+			slog.Warn("smartctl message", "severity", msg.Severity, "message", msg.String)
+		}
 	}
 
 	return &smartInfo, nil

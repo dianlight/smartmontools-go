@@ -104,7 +104,12 @@ func TestGetSMARTInfo(t *testing.T) {
 		"device": {"name": "/dev/sda", "type": "ata"},
 		"model_name": "Test Drive",
 		"serial_number": "12345",
-		"smart_status": {"passed": true}
+		"smart_status": {"passed": true},
+		"smartctl": {
+			"messages": [
+				{"string": "Test informational message", "severity": "info"}
+			]
+		}
 	}`
 	commander := &mockCommander{
 		cmds: map[string]*mockCmd{
@@ -129,12 +134,29 @@ func TestGetSMARTInfo(t *testing.T) {
 	if !info.SmartStatus.Passed {
 		t.Error("Expected SMART status passed")
 	}
+
+	if info.Smartctl == nil || len(info.Smartctl.Messages) != 1 {
+		t.Errorf("Expected 1 message, got %v", info.Smartctl)
+	}
+
+	if info.Smartctl.Messages[0].String != "Test informational message" {
+		t.Errorf("Expected message 'Test informational message', got '%s'", info.Smartctl.Messages[0].String)
+	}
+
+	if info.Smartctl.Messages[0].Severity != "info" {
+		t.Errorf("Expected severity 'info', got '%s'", info.Smartctl.Messages[0].Severity)
+	}
 }
 
 func TestGetSMARTInfoExitError(t *testing.T) {
 	mockJSON := `{
 		"device": {"name": "/dev/sda", "type": "ata"},
-		"smart_status": {"passed": false}
+		"smart_status": {"passed": false},
+		"smartctl": {
+			"messages": [
+				{"string": "Test error message", "severity": "error"}
+			]
+		}
 	}`
 	commander := &mockCommander{
 		cmds: map[string]*mockCmd{
@@ -153,6 +175,18 @@ func TestGetSMARTInfoExitError(t *testing.T) {
 
 	if info.SmartStatus.Passed {
 		t.Error("Expected SMART status failed")
+	}
+
+	if info.Smartctl == nil || len(info.Smartctl.Messages) != 1 {
+		t.Errorf("Expected 1 message, got %v", info.Smartctl)
+	}
+
+	if info.Smartctl.Messages[0].String != "Test error message" {
+		t.Errorf("Expected message 'Test error message', got '%s'", info.Smartctl.Messages[0].String)
+	}
+
+	if info.Smartctl.Messages[0].Severity != "error" {
+		t.Errorf("Expected severity 'error', got '%s'", info.Smartctl.Messages[0].Severity)
 	}
 }
 
