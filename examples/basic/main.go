@@ -113,6 +113,23 @@ func main() {
 		}
 	}
 
+	// Get available self-tests
+	fmt.Println("Getting available self-tests...")
+	availableTests, err := client.GetAvailableSelfTests(devicePath)
+	if err != nil {
+		log.Printf("Warning: Failed to get available tests: %v\n", err)
+	} else {
+		fmt.Println("Available Self-Tests:")
+		if len(availableTests) == 0 {
+			fmt.Println("  None")
+		} else {
+			for _, test := range availableTests {
+				fmt.Printf("  - %s\n", test)
+			}
+		}
+	}
+	fmt.Println()
+
 	// Run short self-test with progress
 	fmt.Println("\nRunning short SMART self-test with progress...")
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)

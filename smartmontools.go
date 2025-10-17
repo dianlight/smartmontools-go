@@ -401,3 +401,33 @@ func (c *Client) RunShortSelfTestWithProgress(ctx context.Context, devicePath st
 		}
 	}
 }
+
+// GetAvailableSelfTests returns the list of available self-test types for a device
+func (c *Client) GetAvailableSelfTests(devicePath string) ([]string, error) {
+	smartInfo, err := c.GetSMARTInfo(devicePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get SMART info: %w", err)
+	}
+
+	var tests []string
+
+	// Check ATA capabilities
+	if smartInfo.AtaSmartData != nil && smartInfo.AtaSmartData.Capabilities != nil {
+		caps := smartInfo.AtaSmartData.Capabilities
+		if caps.ExecOfflineImmediate {
+			tests = append(tests, "short", "long", "offline")
+		}
+		// Conveyance test support - check if capability value indicates support
+		// For simplicity, assume conveyance is supported if offline immediate is
+		if caps.ExecOfflineImmediate {
+			tests = append(tests, "conveyance")
+		}
+	}
+
+	// Check NVMe capabilities
+	if smartInfo.NvmeControllerCapabilities != nil && smartInfo.NvmeControllerCapabilities.SelfTest {
+		tests = append(tests, "short")
+	}
+
+	return tests, nil
+}

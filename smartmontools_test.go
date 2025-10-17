@@ -258,3 +258,122 @@ func TestRunSelfTestInvalidType(t *testing.T) {
 		t.Error("Expected error for invalid test type")
 	}
 }
+
+func TestGetAvailableSelfTestsATA(t *testing.T) {
+	mockJSON := `{
+		"device": {"name": "/dev/sda", "type": "ata"},
+		"ata_smart_data": {
+			"capabilities": {
+				"exec_offline_immediate_supported": true,
+				"values": [1, 2, 3]
+			}
+		}
+	}`
+	commander := &mockCommander{
+		cmds: map[string]*mockCmd{
+			"/usr/sbin/smartctl -a -j /dev/sda": {output: []byte(mockJSON)},
+		},
+	}
+	client := NewClientWithCommander("/usr/sbin/smartctl", commander)
+
+	tests, err := client.GetAvailableSelfTests("/dev/sda")
+	if err != nil {
+		t.Errorf("Expected no error, got %v", err)
+	}
+
+	expected := []string{"short", "long", "offline", "conveyance"}
+	if len(tests) != len(expected) {
+		t.Errorf("Expected %d tests, got %d", len(expected), len(tests))
+	}
+
+	for i, test := range expected {
+		if i >= len(tests) || tests[i] != test {
+			t.Errorf("Expected test %s at position %d, got %v", test, i, tests)
+		}
+	}
+}
+
+func TestGetAvailableSelfTestsATANoCapabilities(t *testing.T) {
+	mockJSON := `{
+		"device": {"name": "/dev/sda", "type": "ata"},
+		"ata_smart_data": {}
+	}`
+	commander := &mockCommander{
+		cmds: map[string]*mockCmd{
+			"/usr/sbin/smartctl -a -j /dev/sda": {output: []byte(mockJSON)},
+		},
+	}
+	client := NewClientWithCommander("/usr/sbin/smartctl", commander)
+
+	tests, err := client.GetAvailableSelfTests("/dev/sda")
+	if err != nil {
+		t.Errorf("Expected no error, got %v", err)
+	}
+
+	if len(tests) != 0 {
+		t.Errorf("Expected no tests, got %v", tests)
+	}
+}
+
+func TestGetAvailableSelfTestsNVMe(t *testing.T) {
+	mockJSON := `{
+		"device": {"name": "/dev/nvme0n1", "type": "nvme"},
+		"nvme_controller_capabilities": {
+			"self_test": true
+		}
+	}`
+	commander := &mockCommander{
+		cmds: map[string]*mockCmd{
+			"/usr/sbin/smartctl -a -j /dev/nvme0n1": {output: []byte(mockJSON)},
+		},
+	}
+	client := NewClientWithCommander("/usr/sbin/smartctl", commander)
+
+	tests, err := client.GetAvailableSelfTests("/dev/nvme0n1")
+	if err != nil {
+		t.Errorf("Expected no error, got %v", err)
+	}
+
+	expected := []string{"short"}
+	if len(tests) != len(expected) || tests[0] != expected[0] {
+		t.Errorf("Expected %v, got %v", expected, tests)
+	}
+}
+
+func TestGetAvailableSelfTestsNVMeNoSupport(t *testing.T) {
+	mockJSON := `{
+		"device": {"name": "/dev/nvme0n1", "type": "nvme"},
+		"nvme_controller_capabilities": {
+			"self_test": false
+		}
+	}`
+	commander := &mockCommander{
+		cmds: map[string]*mockCmd{
+			"/usr/sbin/smartctl -a -j /dev/nvme0n1": {output: []byte(mockJSON)},
+		},
+	}
+	client := NewClientWithCommander("/usr/sbin/smartctl", commander)
+
+	tests, err := client.GetAvailableSelfTests("/dev/nvme0n1")
+	if err != nil {
+		t.Errorf("Expected no error, got %v", err)
+	}
+
+	if len(tests) != 0 {
+		t.Errorf("Expected no tests, got %v", tests)
+	}
+}
+
+func TestGetAvailableSelfTestsError(t *testing.T) {
+	commander := &mockCommander{
+		cmds: map[string]*mockCmd{
+			"/usr/sbin/smartctl -a -j /dev/sda": {err: errors.New("command failed")},
+		},
+	}
+	client := NewClientWithCommander("/usr/sbin/smartctl", commander)
+
+	_, err := client.GetAvailableSelfTests("/dev/sda")
+	if err == nil {
+		t.Error("Expected error, got nil")
+	}
+}
