@@ -6,6 +6,11 @@
 
 A Go library that interfaces with smartmontools to monitor and manage storage device health using S.M.A.R.T. (Self-Monitoring, Analysis, and Reporting Technology) data.
 
+![CI](https://github.com/dianlight/smartmontools-go/actions/workflows/ci.yml/badge.svg)
+[![Coverage Status](https://codecov.io/github/dianlight/smartmontools-go/graph/badge.svg?token=1J2VP3FEZ4)](https://codecov.io/github/dianlight/smartmontools-go)
+![Stable Release](https://img.shields.io/github/v/release/dianlight/smartmontools-go)
+![Prerelease](https://img.shields.io/github/v/release/dianlight/smartmontools-go?include_prereleases)
+
 ## Features
 
 - 🔍 **Device Scanning**: Automatically detect available storage devices
@@ -221,19 +226,6 @@ This project is licensed under the GNU General Public License v3.0 - see the [LI
 ## CI and Makefile
 
 This repository includes a `Makefile` with common targets and a GitHub Actions workflow that runs CI on `push` and `pull_request` to `main`.
-
-Badge (shows current GitHub Actions status):
-
-![CI](https://github.com/dianlight/smartmontools-go/actions/workflows/ci.yml/badge.svg)
-
-Coverage badge (Codecov):
-
-[![Coverage Status](https://codecov.io/github/dianlight/smartmontools-go/graph/badge.svg?token=1J2VP3FEZ4)](https://codecov.io/github/dianlight/smartmontools-go)
-
-Releases:
-
-![Stable Release](https://img.shields.io/github/v/release/dianlight/smartmontools-go)
-![Prerelease](https://img.shields.io/github/v/release/dianlight/smartmontools-go?include_prereleases)
 
 Quick Makefile usage:
 
