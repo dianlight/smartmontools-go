@@ -217,3 +217,20 @@ This project is licensed under the GNU General Public License v3.0 - see the [LI
 
 - [smartmontools](https://www.smartmontools.org/) - The underlying tool that makes this library possible
 - [libgoffi](https://github.com/noctarius/libgoffi) - FFI adapter library for Go (for future enhancements)
+
+## CI and Makefile
+
+This repository includes a `Makefile` with common targets and a GitHub Actions workflow that runs CI on `push` and `pull_request` to `main`.
+
+Badge (shows current GitHub Actions status):
+
+![CI](https://github.com/dianlight/smartmontools-go/actions/workflows/ci.yml/badge.svg)
+
+Quick Makefile usage:
+
+- Run tests: `make test`
+- Run full CI locally (formats, vet, staticcheck, tests): `make ci`
+- Format code: `make fmt`
+- Build binary: `make build`
+
+Staticcheck will be installed into your Go bin (GOBIN or GOPATH/bin) if not already present when you run `make ci`.
