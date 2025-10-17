@@ -5,7 +5,7 @@
 When suggesting commit messages, always follow the conventional commit format combined with gitmoji emojis from https://gitmoji.dev/.
 
 ### Format
-```
+```TXT
 :emoji: type(scope): description
 
 [optional body]
@@ -46,5 +46,4 @@ Use the corresponding gitmoji for the type:
 - 📚 docs: update README with installation instructions
 - ♻️ refactor: simplify user validation logic
 
-Keep commit messages concise but descriptive. Use the imperative mood ("add" not "added").</content>
-<parameter name="filePath">/Users/ltarantino/Documents/Sources/smartmontools-go/.github/copilot-instructions.md
+Keep commit messages concise but descriptive. Use the imperative mood ("add" not "added").
