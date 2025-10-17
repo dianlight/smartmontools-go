@@ -23,7 +23,6 @@ help:
 	@echo "Makefile for smartmontools-go"
 	@echo ""
 	@echo "Available targets:"
-	@echo "  build          Build the project binary"
 	@echo "  test           Run unit tests for all packages"
 	@echo "  coverage       Run tests and show coverage summary"
 	@echo "  fmt            Run gofmt on the project"
@@ -33,10 +32,6 @@ help:
 	@echo "  mod-download   Download modules (go mod download)"
 	@echo "  run-example    Run the example in examples/basic"
 	@echo "  clean          Remove build artifacts"
-
-build:
-	@echo "Building $(BIN)..."
-	$(GOBUILD) -v -o $(BIN) ./
 
 test:
 	@echo "Running tests..."
