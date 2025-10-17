@@ -1,2 +1,178 @@
 # smartmontools-go
-A Go library that use libffi to interface smartmodemtools library
+
+A Go library that interfaces with smartmontools to monitor and manage storage device health using S.M.A.R.T. (Self-Monitoring, Analysis, and Reporting Technology) data.
+
+## Features
+
+- 🔍 **Device Scanning**: Automatically detect available storage devices
+- 💚 **Health Monitoring**: Check device health status using SMART data
+- 📊 **SMART Attributes**: Read and parse detailed SMART attributes
+- 🌡️ **Temperature Monitoring**: Track device temperature
+- ⚙️ **Self-Tests**: Initiate and monitor SMART self-tests
+- 🔧 **Device Information**: Retrieve model, serial number, firmware version, and more
+
+## Prerequisites
+
+This library requires `smartctl` (part of smartmontools) to be installed on your system:
+
+### Linux
+```bash
+# Debian/Ubuntu
+sudo apt-get install smartmontools
+
+# RHEL/CentOS/Fedora
+sudo yum install smartmontools
+
+# Arch Linux
+sudo pacman -S smartmontools
+```
+
+### macOS
+```bash
+brew install smartmontools
+```
+
+### Windows
+Download and install from [smartmontools.org](https://www.smartmontools.org/)
+
+## Installation
+
+```bash
+go get github.com/dianlight/smartmontools-go
+```
+
+## Usage
+
+### Basic Example
+
+```go
+package main
+
+import (
+    "fmt"
+    "log"
+
+    "github.com/dianlight/smartmontools-go"
+)
+
+func main() {
+    // Create a new client
+    client, err := smartmontools.NewClient()
+    if err != nil {
+        log.Fatalf("Failed to create client: %v", err)
+    }
+
+    // Scan for devices
+    devices, err := client.ScanDevices()
+    if err != nil {
+        log.Fatalf("Failed to scan devices: %v", err)
+    }
+
+    for _, device := range devices {
+        fmt.Printf("Device: %s (type: %s)\n", device.Name, device.Type)
+        
+        // Check health
+        healthy, err := client.CheckHealth(device.Name)
+        if err != nil {
+            log.Printf("Failed to check health: %v", err)
+            continue
+        }
+        
+        if healthy {
+            fmt.Println("  Health: PASSED ✓")
+        } else {
+            fmt.Println("  Health: FAILED ✗")
+        }
+    }
+}
+```
+
+### Getting SMART Information
+
+```go
+// Get detailed SMART information
+smartInfo, err := client.GetSMARTInfo("/dev/sda")
+if err != nil {
+    log.Fatalf("Failed to get SMART info: %v", err)
+}
+
+fmt.Printf("Model: %s\n", smartInfo.ModelName)
+fmt.Printf("Serial: %s\n", smartInfo.SerialNumber)
+fmt.Printf("Temperature: %d°C\n", smartInfo.Temperature.Current)
+fmt.Printf("Power On Hours: %d\n", smartInfo.PowerOnTime.Hours)
+
+// Access SMART attributes
+if smartInfo.AtaSmartData != nil {
+    for _, attr := range smartInfo.AtaSmartData.Table {
+        fmt.Printf("Attribute %d (%s): %d\n", attr.ID, attr.Name, attr.Value)
+    }
+}
+```
+
+### Running Self-Tests
+
+```go
+// Run a short self-test
+err := client.RunSelfTest("/dev/sda", "short")
+if err != nil {
+    log.Fatalf("Failed to run self-test: %v", err)
+}
+
+// Available test types: "short", "long", "conveyance", "offline"
+```
+
+### Custom smartctl Path
+
+```go
+// If smartctl is not in PATH or you want to use a specific binary
+client := smartmontools.NewClientWithPath("/usr/local/sbin/smartctl")
+```
+
+## API Reference
+
+### Client
+
+- `NewClient() (*Client, error)` - Creates a new client, auto-detecting smartctl path
+- `NewClientWithPath(path string) *Client` - Creates a client with a specific smartctl path
+
+### Methods
+
+- `ScanDevices() ([]Device, error)` - Scans for available storage devices
+- `GetSMARTInfo(devicePath string) (*SMARTInfo, error)` - Retrieves detailed SMART information
+- `CheckHealth(devicePath string) (bool, error)` - Checks device health status
+- `GetDeviceInfo(devicePath string) (map[string]interface{}, error)` - Gets basic device information
+- `RunSelfTest(devicePath string, testType string) error` - Initiates a SMART self-test
+
+## Examples
+
+See the [examples](./examples) directory for more detailed usage examples:
+
+- [Basic Usage](./examples/basic/main.go) - Demonstrates device scanning, health checking, and SMART info retrieval
+
+To run the basic example:
+
+```bash
+cd examples/basic
+go run main.go
+```
+
+**Note**: Some operations require root/administrator privileges to access disk devices.
+
+## Architecture
+
+This library uses a command-line wrapper approach, executing `smartctl` commands and parsing their JSON output. The library leverages smartmontools' built-in JSON output format for reliable and structured data extraction.
+
+While the project references libgoffi in its description, the current implementation uses the command-line interface for maximum compatibility and reliability. Future versions may incorporate direct library bindings using libgoffi for enhanced performance.
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+## License
+
+This project is licensed under the GNU General Public License v3.0 - see the [LICENSE](LICENSE) file for details.
+
+## Acknowledgments
+
+- [smartmontools](https://www.smartmontools.org/) - The underlying tool that makes this library possible
+- [libgoffi](https://github.com/noctarius/libgoffi) - FFI adapter library for Go (for future enhancements)
