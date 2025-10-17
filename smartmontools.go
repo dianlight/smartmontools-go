@@ -73,6 +73,7 @@ type SMARTInfo struct {
 	Firmware                   string                      `json:"firmware_version,omitempty"`
 	UserCapacity               int64                       `json:"user_capacity,omitempty"`
 	SmartStatus                SmartStatus                 `json:"smart_status,omitempty"`
+	SmartSupport               *SmartSupport               `json:"smart_support,omitempty"`
 	AtaSmartData               *AtaSmartData               `json:"ata_smart_data,omitempty"`
 	NvmeSmartHealth            *NvmeSmartHealth            `json:"nvme_smart_health_information_log,omitempty"`
 	NvmeControllerCapabilities *NvmeControllerCapabilities `json:"nvme_controller_capabilities,omitempty"`
@@ -84,6 +85,18 @@ type SMARTInfo struct {
 // SmartStatus represents the overall SMART health status
 type SmartStatus struct {
 	Passed bool `json:"passed"`
+}
+
+// SmartSupport represents SMART availability and enablement status
+type SmartSupport struct {
+	Available bool `json:"available"`
+	Enabled   bool `json:"enabled"`
+}
+
+// SMARTSupportInfo represents SMART support and enablement information
+type SMARTSupportInfo struct {
+	Supported bool
+	Enabled   bool
 }
 
 // AtaSmartData represents ATA SMART attributes
@@ -430,4 +443,60 @@ func (c *Client) GetAvailableSelfTests(devicePath string) ([]string, error) {
 	}
 
 	return tests, nil
+}
+
+// IsSMARTSupported checks if SMART is supported on a device and if it's enabled
+func (c *Client) IsSMARTSupported(devicePath string) (*SMARTSupportInfo, error) {
+	smartInfo, err := c.GetSMARTInfo(devicePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get SMART info: %w", err)
+	}
+
+	supportInfo := &SMARTSupportInfo{}
+
+	// Check NVMe SMART support first
+	if smartInfo.SmartSupport != nil {
+		supportInfo.Supported = smartInfo.SmartSupport.Available
+		supportInfo.Enabled = smartInfo.SmartSupport.Enabled
+		return supportInfo, nil
+	}
+
+	// Check ATA SMART data presence for support
+	if smartInfo.AtaSmartData != nil {
+		supportInfo.Supported = true
+		// For ATA devices, if SMART data is present, assume it's enabled
+		// (ATA devices typically don't have a separate enabled/disabled status in JSON)
+		supportInfo.Enabled = true
+		return supportInfo, nil
+	}
+
+	// Check NVMe SMART health information as fallback
+	if smartInfo.NvmeSmartHealth != nil {
+		supportInfo.Supported = true
+		supportInfo.Enabled = true
+		return supportInfo, nil
+	}
+
+	// Not supported
+	supportInfo.Supported = false
+	supportInfo.Enabled = false
+	return supportInfo, nil
+}
+
+// EnableSMART enables SMART monitoring on a device
+func (c *Client) EnableSMART(devicePath string) error {
+	cmd := c.commander.Command(c.smartctlPath, "-s", "on", devicePath)
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to enable SMART: %w", err)
+	}
+	return nil
+}
+
+// DisableSMART disables SMART monitoring on a device
+func (c *Client) DisableSMART(devicePath string) error {
+	cmd := c.commander.Command(c.smartctlPath, "-s", "off", devicePath)
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to disable SMART: %w", err)
+	}
+	return nil
 }

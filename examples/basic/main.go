@@ -60,7 +60,24 @@ func main() {
 		}
 	}
 	fmt.Println()
-
+	// Check if SMART is supported
+	fmt.Println("Checking if SMART is supported...")
+	smartSupported, err := client.IsSMARTSupported(devicePath)
+	if err != nil {
+		log.Printf("Warning: Failed to check SMART support: %v\n", err)
+	} else {
+		if smartSupported.Supported {
+			fmt.Println("✓ SMART is supported")
+		} else {
+			fmt.Println("✗ SMART is not supported")
+		}
+		if smartSupported.Enabled {
+			fmt.Println("✓ SMART is enabled")
+		} else {
+			fmt.Println("✗ SMART is disabled")
+		}
+	}
+	fmt.Println()
 	// Get basic device information
 	fmt.Println("Getting device information...")
 	info, err := client.GetDeviceInfo(devicePath)

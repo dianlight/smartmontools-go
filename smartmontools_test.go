@@ -377,3 +377,185 @@ func TestGetAvailableSelfTestsError(t *testing.T) {
 		t.Error("Expected error, got nil")
 	}
 }
+
+func TestIsSMARTSupportedATA(t *testing.T) {
+	mockJSON := `{
+		"device": {"name": "/dev/sda", "type": "ata"},
+		"ata_smart_data": {
+			"capabilities": {
+				"exec_offline_immediate_supported": true
+			}
+		}
+	}`
+	commander := &mockCommander{
+		cmds: map[string]*mockCmd{
+			"/usr/sbin/smartctl -a -j /dev/sda": {output: []byte(mockJSON)},
+		},
+	}
+	client := NewClientWithCommander("/usr/sbin/smartctl", commander)
+
+	supportInfo, err := client.IsSMARTSupported("/dev/sda")
+	if err != nil {
+		t.Errorf("Expected no error, got %v", err)
+	}
+
+	if !supportInfo.Supported {
+		t.Error("Expected SMART to be supported for ATA device")
+	}
+
+	if !supportInfo.Enabled {
+		t.Error("Expected SMART to be enabled for ATA device")
+	}
+}
+
+func TestIsSMARTSupportedNVMe(t *testing.T) {
+	mockJSON := `{
+		"device": {"name": "/dev/nvme0n1", "type": "nvme"},
+		"nvme_smart_health_information_log": {
+			"temperature": 35
+		}
+	}`
+	commander := &mockCommander{
+		cmds: map[string]*mockCmd{
+			"/usr/sbin/smartctl -a -j /dev/nvme0n1": {output: []byte(mockJSON)},
+		},
+	}
+	client := NewClientWithCommander("/usr/sbin/smartctl", commander)
+
+	supportInfo, err := client.IsSMARTSupported("/dev/nvme0n1")
+	if err != nil {
+		t.Errorf("Expected no error, got %v", err)
+	}
+
+	if !supportInfo.Supported {
+		t.Error("Expected SMART to be supported for NVMe device")
+	}
+
+	if !supportInfo.Enabled {
+		t.Error("Expected SMART to be enabled for NVMe device")
+	}
+}
+
+func TestIsSMARTSupportedNVMeWithSmartSupport(t *testing.T) {
+	mockJSON := `{
+		"device": {"name": "/dev/nvme0n1", "type": "nvme"},
+		"smart_support": {
+			"available": true,
+			"enabled": false
+		}
+	}`
+	commander := &mockCommander{
+		cmds: map[string]*mockCmd{
+			"/usr/sbin/smartctl -a -j /dev/nvme0n1": {output: []byte(mockJSON)},
+		},
+	}
+	client := NewClientWithCommander("/usr/sbin/smartctl", commander)
+
+	supportInfo, err := client.IsSMARTSupported("/dev/nvme0n1")
+	if err != nil {
+		t.Errorf("Expected no error, got %v", err)
+	}
+
+	if !supportInfo.Supported {
+		t.Error("Expected SMART to be supported for NVMe device")
+	}
+
+	if supportInfo.Enabled {
+		t.Error("Expected SMART to be disabled for NVMe device")
+	}
+}
+
+func TestIsSMARTSupportedNotSupported(t *testing.T) {
+	mockJSON := `{
+		"device": {"name": "/dev/sda", "type": "ata"}
+	}`
+	commander := &mockCommander{
+		cmds: map[string]*mockCmd{
+			"/usr/sbin/smartctl -a -j /dev/sda": {output: []byte(mockJSON)},
+		},
+	}
+	client := NewClientWithCommander("/usr/sbin/smartctl", commander)
+
+	supportInfo, err := client.IsSMARTSupported("/dev/sda")
+	if err != nil {
+		t.Errorf("Expected no error, got %v", err)
+	}
+
+	if supportInfo.Supported {
+		t.Error("Expected SMART to not be supported")
+	}
+
+	if supportInfo.Enabled {
+		t.Error("Expected SMART to not be enabled")
+	}
+}
+
+func TestIsSMARTSupportedError(t *testing.T) {
+	commander := &mockCommander{
+		cmds: map[string]*mockCmd{
+			"/usr/sbin/smartctl -a -j /dev/sda": {err: errors.New("command failed")},
+		},
+	}
+	client := NewClientWithCommander("/usr/sbin/smartctl", commander)
+
+	_, err := client.IsSMARTSupported("/dev/sda")
+	if err == nil {
+		t.Error("Expected error, got nil")
+	}
+}
+
+func TestEnableSMART(t *testing.T) {
+	commander := &mockCommander{
+		cmds: map[string]*mockCmd{
+			"/usr/sbin/smartctl -s on /dev/sda": {},
+		},
+	}
+	client := NewClientWithCommander("/usr/sbin/smartctl", commander)
+
+	err := client.EnableSMART("/dev/sda")
+	if err != nil {
+		t.Errorf("Expected no error, got %v", err)
+	}
+}
+
+func TestEnableSMARTError(t *testing.T) {
+	commander := &mockCommander{
+		cmds: map[string]*mockCmd{
+			"/usr/sbin/smartctl -s on /dev/sda": {err: errors.New("command failed")},
+		},
+	}
+	client := NewClientWithCommander("/usr/sbin/smartctl", commander)
+
+	err := client.EnableSMART("/dev/sda")
+	if err == nil {
+		t.Error("Expected error, got nil")
+	}
+}
+
+func TestDisableSMART(t *testing.T) {
+	commander := &mockCommander{
+		cmds: map[string]*mockCmd{
+			"/usr/sbin/smartctl -s off /dev/sda": {},
+		},
+	}
+	client := NewClientWithCommander("/usr/sbin/smartctl", commander)
+
+	err := client.DisableSMART("/dev/sda")
+	if err != nil {
+		t.Errorf("Expected no error, got %v", err)
+	}
+}
+
+func TestDisableSMARTError(t *testing.T) {
+	commander := &mockCommander{
+		cmds: map[string]*mockCmd{
+			"/usr/sbin/smartctl -s off /dev/sda": {err: errors.New("command failed")},
+		},
+	}
+	client := NewClientWithCommander("/usr/sbin/smartctl", commander)
+
+	err := client.DisableSMART("/dev/sda")
+	if err == nil {
+		t.Error("Expected error, got nil")
+	}
+}
