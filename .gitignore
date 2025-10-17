@@ -10,7 +10,6 @@
 
 # Example binaries
 examples/*/example
-examples/basic/basic
 
 # Test binary, built with `go test -c`
 *.test
