@@ -616,3 +616,12 @@ func (c *Client) DisableSMART(devicePath string) error {
 	}
 	return nil
 }
+
+// AbortSelfTest aborts a running self-test on a device
+func (c *Client) AbortSelfTest(devicePath string) error {
+	cmd := c.commander.Command(c.smartctlPath, "-X", devicePath)
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to abort self-test: %w", err)
+	}
+	return nil
+}

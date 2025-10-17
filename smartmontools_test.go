@@ -674,3 +674,31 @@ func TestDisableSMARTError(t *testing.T) {
 		t.Error("Expected error, got nil")
 	}
 }
+
+func TestAbortSelfTest(t *testing.T) {
+	commander := &mockCommander{
+		cmds: map[string]*mockCmd{
+			"/usr/sbin/smartctl -X /dev/sda": {},
+		},
+	}
+	client := NewClientWithCommander("/usr/sbin/smartctl", commander)
+
+	err := client.AbortSelfTest("/dev/sda")
+	if err != nil {
+		t.Errorf("Expected no error, got %v", err)
+	}
+}
+
+func TestAbortSelfTestError(t *testing.T) {
+	commander := &mockCommander{
+		cmds: map[string]*mockCmd{
+			"/usr/sbin/smartctl -X /dev/sda": {err: errors.New("command failed")},
+		},
+	}
+	client := NewClientWithCommander("/usr/sbin/smartctl", commander)
+
+	err := client.AbortSelfTest("/dev/sda")
+	if err == nil {
+		t.Error("Expected error, got nil")
+	}
+}
