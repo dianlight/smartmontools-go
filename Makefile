@@ -45,9 +45,9 @@ test:
 
 coverage:
 	@echo "Running tests with coverage..."
-	$(GOTEST) -coverprofile=coverage.out ./... || true
+	$(GOTEST) -coverprofile=coverage.txt ./... -covermode=atomic || true
 	@echo "Summary:"
-	@if [ -f coverage.out ]; then $(GOCMD) tool cover -func=coverage.out | tail -n 1; fi
+	@if [ -f coverage.txt ]; then $(GOCMD) tool cover -func=coverage.txt | tail -n 1; fi
 
 fmt:
 	@echo "Formatting code (gofmt)..."

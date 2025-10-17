@@ -42,25 +42,9 @@ jobs:
               run: make coverage
               continue-on-error: true
 
-            - name: Upload coverage artifact
-              uses: actions/upload-artifact@v4
-              with:
-                  name: coverage-report
-                  path: coverage.out
-
-    codecov:
-        needs: build
-        runs-on: ubuntu-latest
-        steps:
-            - name: Download coverage artifact
-              uses: actions/download-artifact@v4
-              with:
-                  name: coverage-report
-
             - name: Upload to Codecov
               uses: codecov/codecov-action@v5
               with:
                   token: ${{ secrets.CODECOV_TOKEN }}
                   files: coverage.out
-                  flags: unittests
                   fail_ci_if_error: false

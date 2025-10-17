@@ -18,9 +18,9 @@ jobs:
           TAG=${GITHUB_REF#refs/tags/}
           PREV_TAG=$(git describe --tags --abbrev=0 ${GITHUB_REF}^ 2>/dev/null || true)
           if [ -n "$PREV_TAG" ]; then
-            git --no-pager log ${PREV_TAG}..${TAG} --pretty=format:"- %s (%h)" > notes.txt
+            git --no-pager log ${PREV_TAG}..${TAG} --pretty=format:"- %s (%h)" > notes.txt || true
           else
-            git --no-pager log --pretty=format:"- %s (%h)" > notes.txt
+            git --no-pager log --pretty=format:"- %s (%h)" > notes.txt || true
           fi
           echo "notes<<EOF_NOTES" >> $GITHUB_OUTPUT
           cat notes.txt >> $GITHUB_OUTPUT
