@@ -22,9 +22,9 @@ jobs:
           else
             git --no-pager log --pretty=format:"- %s (%h)" > notes.txt
           fi
-          echo "notes<<EOF" >> $GITHUB_OUTPUT
+          echo "notes<<EOF_NOTES" >> $GITHUB_OUTPUT
           cat notes.txt >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          echo "EOF_NOTES" >> $GITHUB_OUTPUT
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
