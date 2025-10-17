@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/dianlight/smartmontools-go"
+	"github.com/fatih/color"
 )
 
 func main() {
@@ -19,25 +20,31 @@ func main() {
 	}
 	//slog.SetLogLoggerLevel(slog.LevelDebug)
 
-	fmt.Println("Smartmontools Go Example")
-	fmt.Println("=========================")
+	// Define color functions
+	green := color.New(color.FgGreen).SprintFunc()
+	red := color.New(color.FgRed).SprintFunc()
+	yellow := color.New(color.FgYellow).SprintFunc()
+	blue := color.New(color.FgBlue).SprintFunc()
+
+	fmt.Println(blue("Smartmontools Go Example"))
+	fmt.Println(blue("========================="))
 	fmt.Println()
 
 	// Scan for available devices
-	fmt.Println("Scanning for devices...")
+	fmt.Println(blue("Scanning for devices..."))
 	devices, err := client.ScanDevices()
 	if err != nil {
-		log.Printf("Warning: Failed to scan devices: %v\n", err)
+		fmt.Println(yellow(fmt.Sprintf("Warning: Failed to scan devices: %v", err)))
 		fmt.Println("Attempting to use /dev/sda as fallback...")
 		devices = []smartmontools.Device{{Name: "/dev/sda", Type: "auto"}}
 	}
 
 	if len(devices) == 0 {
-		fmt.Println("No devices found.")
+		fmt.Println(red("No devices found."))
 		os.Exit(1)
 	}
 
-	fmt.Printf("Found %d device(s):\n", len(devices))
+	fmt.Printf("Found %s device(s):\n", green(fmt.Sprintf("%d", len(devices))))
 	for i, device := range devices {
 		fmt.Printf("  %d. %s (type: %s)\n", i+1, device.Name, device.Type)
 	}
@@ -45,46 +52,46 @@ func main() {
 
 	// Use the first device for demonstration
 	devicePath := devices[0].Name
-	fmt.Printf("Using device: %s\n\n", devicePath)
+	fmt.Printf("Using device: %s\n\n", blue(devicePath))
 
 	// Check health status
-	fmt.Println("Checking device health...")
+	fmt.Println(blue("Checking device health..."))
 	healthy, err := client.CheckHealth(devicePath)
 	if err != nil {
-		log.Printf("Warning: Failed to check health: %v\n", err)
+		fmt.Println(yellow(fmt.Sprintf("Warning: Failed to check health: %v", err)))
 	} else {
 		if healthy {
-			fmt.Println("✓ Device health: PASSED")
+			fmt.Println(green("✓ Device health: PASSED"))
 		} else {
-			fmt.Println("✗ Device health: FAILED")
+			fmt.Println(red("✗ Device health: FAILED"))
 		}
 	}
 	fmt.Println()
 	// Check if SMART is supported
-	fmt.Println("Checking if SMART is supported...")
+	fmt.Println(blue("Checking if SMART is supported..."))
 	smartSupported, err := client.IsSMARTSupported(devicePath)
 	if err != nil {
-		log.Printf("Warning: Failed to check SMART support: %v\n", err)
+		fmt.Println(yellow(fmt.Sprintf("Warning: Failed to check SMART support: %v", err)))
 	} else {
 		if smartSupported.Supported {
-			fmt.Println("✓ SMART is supported")
+			fmt.Println(green("✓ SMART is supported"))
 		} else {
-			fmt.Println("✗ SMART is not supported")
+			fmt.Println(red("✗ SMART is not supported"))
 		}
 		if smartSupported.Enabled {
-			fmt.Println("✓ SMART is enabled")
+			fmt.Println(green("✓ SMART is enabled"))
 		} else {
-			fmt.Println("✗ SMART is disabled")
+			fmt.Println(red("✗ SMART is disabled"))
 		}
 	}
 	fmt.Println()
 	// Get basic device information
-	fmt.Println("Getting device information...")
+	fmt.Println(blue("Getting device information..."))
 	info, err := client.GetDeviceInfo(devicePath)
 	if err != nil {
-		log.Printf("Warning: Failed to get device info: %v\n", err)
+		fmt.Println(yellow(fmt.Sprintf("Warning: Failed to get device info: %v", err)))
 	} else {
-		fmt.Println("Device Information:")
+		fmt.Println(blue("Device Information:"))
 		if modelName, ok := info["model_name"].(string); ok {
 			fmt.Printf("  Model: %s\n", modelName)
 		}
@@ -98,12 +105,12 @@ func main() {
 	fmt.Println()
 
 	// Get full SMART information
-	fmt.Println("Getting SMART information...")
+	fmt.Println(blue("Getting SMART information..."))
 	smartInfo, err := client.GetSMARTInfo(devicePath)
 	if err != nil {
-		log.Printf("Warning: Failed to get SMART info: %v\n", err)
+		fmt.Println(yellow(fmt.Sprintf("Warning: Failed to get SMART info: %v", err)))
 	} else {
-		fmt.Println("SMART Information:")
+		fmt.Println(blue("SMART Information:"))
 		fmt.Printf("  Model: %s\n", smartInfo.ModelName)
 		fmt.Printf("  Serial: %s\n", smartInfo.SerialNumber)
 		fmt.Printf("  Firmware: %s\n", smartInfo.Firmware)
@@ -131,12 +138,12 @@ func main() {
 	}
 
 	// Get available self-tests
-	fmt.Println("Getting available self-tests...")
+	fmt.Println(blue("Getting available self-tests..."))
 	availableTests, err := client.GetAvailableSelfTests(devicePath)
 	if err != nil {
-		log.Printf("Warning: Failed to get available tests: %v\n", err)
+		fmt.Println(yellow(fmt.Sprintf("Warning: Failed to get available tests: %v", err)))
 	} else {
-		fmt.Println("Available Self-Tests:")
+		fmt.Println(blue("Available Self-Tests:"))
 		if len(availableTests) == 0 {
 			fmt.Println("  None")
 		} else {
@@ -148,7 +155,7 @@ func main() {
 	fmt.Println()
 
 	// Run short self-test with progress
-	fmt.Println("\nRunning short SMART self-test with progress...")
+	fmt.Println(blue("\nRunning short SMART self-test with progress..."))
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
 
@@ -162,13 +169,13 @@ func main() {
 	err = client.RunShortSelfTestWithProgress(ctx, devicePath, progressCallback)
 	if err != nil {
 		if strings.Contains(err.Error(), "not supported") {
-			fmt.Printf("\nNote: Self-tests are not supported by this device (%s)\n", devicePath)
+			fmt.Println(yellow(fmt.Sprintf("\nNote: Self-tests are not supported by this device (%s)", devicePath)))
 		} else {
-			log.Printf("Warning: Failed to run short self-test: %v\n", err)
+			fmt.Println(yellow(fmt.Sprintf("Warning: Failed to run short self-test: %v", err)))
 		}
 	} else {
-		fmt.Println("✓ Short self-test completed successfully")
+		fmt.Println(green("✓ Short self-test completed successfully"))
 	}
 
-	fmt.Println("\n✓ Example completed successfully")
+	fmt.Println(green("\n✓ Example completed successfully"))
 }
