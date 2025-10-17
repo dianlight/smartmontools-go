@@ -48,6 +48,21 @@ coverage:
 	@echo "Summary:"
 	@if [ -f coverage.out ]; then $(GOCMD) tool cover -func=coverage.out | tail -n 1; fi
 
+.PHONY: coverage-upload
+coverage-upload: coverage
+	@echo "Uploading coverage to Codecov (if CODECOV_TOKEN or public repo allowing uploads)..."
+	@if [ -f coverage.out ]; then \
+		if command -v bash >/dev/null 2>&1; then \
+			bash -c "$(shell printf "$(shell printf '')")" >/dev/null 2>&1 || true; \
+			# Try codecov uploader via bash if available; CI may provide CODECOV_TOKEN via secrets
+			bash <(curl -s https://codecov.io/bash) -f coverage.out || echo "codecov upload failed"; \
+		else \
+			echo "bash not available; cannot upload coverage"; \
+		fi \
+	else \
+		echo "coverage.out not found; run 'make coverage' first"; exit 1; \
+	fi
+
 fmt:
 	@echo "Formatting code (gofmt)..."
 	@gofmt -s -w .
