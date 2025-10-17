@@ -1,9 +1,12 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"os"
+	"strings"
+	"time"
 
 	"github.com/dianlight/smartmontools-go"
 )
@@ -14,6 +17,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to create client: %v", err)
 	}
+	//slog.SetLogLoggerLevel(slog.LevelDebug)
 
 	fmt.Println("Smartmontools Go Example")
 	fmt.Println("=========================")
@@ -107,6 +111,29 @@ func main() {
 				}
 			}
 		}
+	}
+
+	// Run short self-test with progress
+	fmt.Println("\nRunning short SMART self-test with progress...")
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancel()
+
+	progressCallback := func(progress int, status string) {
+		fmt.Printf("\rProgress: %d%% - %s", progress, status)
+		if progress == 100 {
+			fmt.Println() // New line after completion
+		}
+	}
+
+	err = client.RunShortSelfTestWithProgress(ctx, devicePath, progressCallback)
+	if err != nil {
+		if strings.Contains(err.Error(), "not supported") {
+			fmt.Printf("\nNote: Self-tests are not supported by this device (%s)\n", devicePath)
+		} else {
+			log.Printf("Warning: Failed to run short self-test: %v\n", err)
+		}
+	} else {
+		fmt.Println("✓ Short self-test completed successfully")
 	}
 
 	fmt.Println("\n✓ Example completed successfully")

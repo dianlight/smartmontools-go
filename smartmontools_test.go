@@ -139,8 +139,8 @@ func TestGetSMARTInfoExitError(t *testing.T) {
 	commander := &mockCommander{
 		cmds: map[string]*mockCmd{
 			"/usr/sbin/smartctl -a -j /dev/sda": {
-				output: []byte("some output"),
-				err:    &exec.ExitError{Stderr: []byte(mockJSON)},
+				output: []byte(mockJSON),
+				err:    &exec.ExitError{Stderr: []byte("")},
 			},
 		},
 	}

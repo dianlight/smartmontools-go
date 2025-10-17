@@ -3,10 +3,13 @@
 package smartmontools
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os/exec"
 	"strings"
+	"time"
 )
 
 // Commander interface for executing commands
@@ -24,6 +27,7 @@ type Cmd interface {
 type execCommander struct{}
 
 func (e execCommander) Command(name string, arg ...string) Cmd {
+	slog.Debug("Executing command", "name", name, "args", arg)
 	return exec.Command(name, arg...)
 }
 
@@ -33,19 +37,48 @@ type Device struct {
 	Type string
 }
 
+// NvmeControllerCapabilities represents NVMe controller capabilities
+type NvmeControllerCapabilities struct {
+	SelfTest bool `json:"self_test,omitempty"`
+}
+
+// NvmeSmartHealth represents NVMe SMART health information
+type NvmeSmartHealth struct {
+	CriticalWarning      int   `json:"critical_warning,omitempty"`
+	Temperature          int   `json:"temperature,omitempty"`
+	AvailableSpare       int   `json:"available_spare,omitempty"`
+	AvailableSpareThresh int   `json:"available_spare_threshold,omitempty"`
+	PercentageUsed       int   `json:"percentage_used,omitempty"`
+	DataUnitsRead        int64 `json:"data_units_read,omitempty"`
+	DataUnitsWritten     int64 `json:"data_units_written,omitempty"`
+	HostReadCommands     int64 `json:"host_read_commands,omitempty"`
+	HostWriteCommands    int64 `json:"host_write_commands,omitempty"`
+	ControllerBusyTime   int64 `json:"controller_busy_time,omitempty"`
+	PowerCycles          int64 `json:"power_cycles,omitempty"`
+	PowerOnHours         int64 `json:"power_on_hours,omitempty"`
+	UnsafeShutdowns      int64 `json:"unsafe_shutdowns,omitempty"`
+	MediaErrors          int64 `json:"media_errors,omitempty"`
+	NumErrLogEntries     int64 `json:"num_err_log_entries,omitempty"`
+	WarningTempTime      int   `json:"warning_temp_time,omitempty"`
+	CriticalCompTime     int   `json:"critical_comp_time,omitempty"`
+	TemperatureSensors   []int `json:"temperature_sensors,omitempty"`
+}
+
 // SMARTInfo represents SMART information for a device
 type SMARTInfo struct {
-	Device          Device        `json:"device"`
-	ModelFamily     string        `json:"model_family,omitempty"`
-	ModelName       string        `json:"model_name,omitempty"`
-	SerialNumber    string        `json:"serial_number,omitempty"`
-	Firmware        string        `json:"firmware_version,omitempty"`
-	UserCapacity    int64         `json:"user_capacity,omitempty"`
-	SmartStatus     SmartStatus   `json:"smart_status,omitempty"`
-	AtaSmartData    *AtaSmartData `json:"ata_smart_data,omitempty"`
-	Temperature     *Temperature  `json:"temperature,omitempty"`
-	PowerOnTime     *PowerOnTime  `json:"power_on_time,omitempty"`
-	PowerCycleCount int           `json:"power_cycle_count,omitempty"`
+	Device                     Device                      `json:"device"`
+	ModelFamily                string                      `json:"model_family,omitempty"`
+	ModelName                  string                      `json:"model_name,omitempty"`
+	SerialNumber               string                      `json:"serial_number,omitempty"`
+	Firmware                   string                      `json:"firmware_version,omitempty"`
+	UserCapacity               int64                       `json:"user_capacity,omitempty"`
+	SmartStatus                SmartStatus                 `json:"smart_status,omitempty"`
+	AtaSmartData               *AtaSmartData               `json:"ata_smart_data,omitempty"`
+	NvmeSmartHealth            *NvmeSmartHealth            `json:"nvme_smart_health_information_log,omitempty"`
+	NvmeControllerCapabilities *NvmeControllerCapabilities `json:"nvme_controller_capabilities,omitempty"`
+	Temperature                *Temperature                `json:"temperature,omitempty"`
+	PowerOnTime                *PowerOnTime                `json:"power_on_time,omitempty"`
+	PowerCycleCount            int                         `json:"power_cycle_count,omitempty"`
 }
 
 // SmartStatus represents the overall SMART health status
@@ -191,15 +224,16 @@ func (c *Client) GetSMARTInfo(devicePath string) (*SMARTInfo, error) {
 	output, err := cmd.Output()
 	if err != nil {
 		// smartctl returns non-zero exit codes for various conditions
-		// We still want to parse the output if available
-		if exitErr, ok := err.(*exec.ExitError); ok {
-			output = exitErr.Stderr
-			if len(output) == 0 {
-				return nil, fmt.Errorf("failed to get SMART info: %w", err)
+		// We still want to parse the output if available and it's valid JSON
+		if len(output) > 0 {
+			var smartInfo SMARTInfo
+			if json.Unmarshal(output, &smartInfo) == nil {
+				// Valid JSON, treat error as warning
+				slog.Warn("smartctl returned error but provided valid JSON output", "error", err)
+				return &smartInfo, nil
 			}
-		} else {
-			return nil, fmt.Errorf("failed to execute smartctl: %w", err)
 		}
+		return nil, fmt.Errorf("failed to get SMART info: %w", err)
 	}
 
 	var smartInfo SMARTInfo
@@ -267,4 +301,103 @@ func (c *Client) RunSelfTest(devicePath string, testType string) error {
 	}
 
 	return nil
+}
+
+// ProgressCallback is a function type for reporting progress
+type ProgressCallback func(progress int, status string)
+
+// RunShortSelfTestWithProgress starts a short SMART self-test and reports progress
+func (c *Client) RunShortSelfTestWithProgress(ctx context.Context, devicePath string, callback ProgressCallback) error {
+	// First check if self-tests are supported
+	smartInfo, err := c.GetSMARTInfo(devicePath)
+	if err != nil {
+		return fmt.Errorf("failed to get SMART info: %w", err)
+	}
+
+	// Check ATA self-test support
+	supportsSelfTest := false
+	if smartInfo.AtaSmartData != nil && smartInfo.AtaSmartData.Capabilities != nil {
+		supportsSelfTest = smartInfo.AtaSmartData.Capabilities.ExecOfflineImmediate
+	}
+
+	// Check NVMe self-test support
+	if smartInfo.NvmeControllerCapabilities != nil {
+		supportsSelfTest = smartInfo.NvmeControllerCapabilities.SelfTest
+	}
+
+	if !supportsSelfTest {
+		return fmt.Errorf("self-tests are not supported by this device")
+	}
+
+	// Start the short self-test
+	if err := c.RunSelfTest(devicePath, "short"); err != nil {
+		return fmt.Errorf("failed to start short self-test: %w", err)
+	}
+
+	if callback != nil {
+		callback(0, "Short self-test started")
+	}
+
+	// Get initial SMART info to determine expected duration
+	expectedMinutes := 2 // default for short test
+	if smartInfo.AtaSmartData != nil && smartInfo.AtaSmartData.SelfTest != nil {
+		if smartInfo.AtaSmartData.SelfTest.PollingMinutes > 0 {
+			expectedMinutes = smartInfo.AtaSmartData.SelfTest.PollingMinutes
+		}
+	}
+
+	// Poll for completion
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+
+	elapsed := 0
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+			elapsed += 5
+
+			// Check current status
+			currentInfo, err := c.GetSMARTInfo(devicePath)
+			if err != nil {
+				slog.Warn("Failed to get SMART info during polling", "error", err)
+				continue
+			}
+
+			if currentInfo.AtaSmartData != nil && currentInfo.AtaSmartData.SelfTest != nil {
+				status := currentInfo.AtaSmartData.SelfTest.Status
+				if status == "completed" || status == "aborted" || status == "interrupted" {
+					if callback != nil {
+						callback(100, fmt.Sprintf("Self-test %s", status))
+					}
+					return nil
+				}
+
+				// Calculate progress based on elapsed time vs expected duration
+				progress := (elapsed * 100) / (expectedMinutes * 60)
+				if progress > 95 {
+					progress = 95 // Don't show 100% until actually completed
+				}
+
+				if callback != nil {
+					callback(progress, fmt.Sprintf("Self-test in progress (%s)", status))
+				}
+			} else {
+				// Fallback progress calculation
+				progress := (elapsed * 100) / (expectedMinutes * 60)
+				if progress > 95 {
+					progress = 95
+				}
+				if callback != nil {
+					callback(progress, "Self-test in progress")
+				}
+			}
+
+			// Timeout after 2x expected duration
+			if elapsed > expectedMinutes*120 {
+				return fmt.Errorf("self-test timed out after %d seconds", elapsed)
+			}
+		}
+	}
 }
