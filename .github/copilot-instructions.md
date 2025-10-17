@@ -10,6 +10,10 @@
 - Create tests to verify the functionality of the code.
 - Maintain a test coverage of at least 80%.
 
+## Godoc Comments
+
+When making changes to the code, always ensure that all exported functions, types, methods, and constants have proper godoc comments. Update the package documentation in `doc.go` if new features are added or existing features are modified. Keep godoc comments concise but descriptive, following Go documentation conventions.
+
 ## Unit Tests
 
 When generating unit tests, ensure that:

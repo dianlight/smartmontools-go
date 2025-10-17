@@ -12,8 +12,10 @@ idiomatic Go API for accessing SMART information from storage devices.
   - Detailed SMART attribute reading
   - Temperature monitoring
   - Power-on time tracking
-  - Self-test execution
+  - Self-test execution and progress monitoring
   - Device information retrieval
+  - SMART support detection and management
+  - Self-test availability checking
 
 # Prerequisites
 
