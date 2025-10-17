@@ -17,7 +17,10 @@ endif
 # staticcheck binary path (either on PATH or in GOBIN)
 STATICCHECK := $(or $(shell command -v staticcheck 2>/dev/null),$(GOBIN)/staticcheck)
 
-.PHONY: help build test coverage fmt vet lint tidy mod-download run-example release prerelease clean
+# gomarkdoc binary path (either on PATH or in GOBIN)
+GOMARKDOC := $(or $(shell command -v gomarkdoc 2>/dev/null),$(GOBIN)/gomarkdoc)
+
+.PHONY: help build test coverage fmt vet lint tidy mod-download run-example release prerelease apidoc clean
 
 help:
 	@echo "Makefile for smartmontools-go"
@@ -31,6 +34,7 @@ help:
 	@echo "  tidy           Run go mod tidy"
 	@echo "  mod-download   Download modules (go mod download)"
 	@echo "  run-example    Run the example in examples/basic"
+	@echo "  apidoc         Generate API documentation (APIDOC.md)"
 	@echo "  release        Create and push a release tag (usage: make release [VERSION_TYPE=major|minor|patch])"
 	@echo "  prerelease     Create and push a prerelease tag (usage: make prerelease [VERSION_TYPE=major|minor|patch])"
 	@echo "  clean          Remove build artifacts"
@@ -91,6 +95,10 @@ run-example:
 	@echo "Running examples/basic..."
 	@cd examples/basic && $(GOCMD) run ./
 
+apidoc:
+	@echo "Generating API documentation..."
+	@if command -v gomarkdoc >/dev/null 2>&1 || [ -x "$(GOMARKDOC)" ]; then "$(GOMARKDOC)" -o APIDOC.md .; else echo "gomarkdoc not installed; install: go install github.com/princjef/gomarkdoc/cmd/gomarkdoc@latest"; exit 1; fi
+
 release:
 	@VERSION_TYPE=$(or $(VERSION_TYPE), patch); \
 	CURRENT_TAG=$$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0"); \
@@ -135,4 +143,4 @@ prerelease:
 
 clean:
 	@echo "Cleaning..."
-	@rm -f $(BIN) coverage.out
+	@rm -f $(BIN) coverage.out APIDOC.md

@@ -139,18 +139,7 @@ client := smartmontools.NewClientWithPath("/usr/local/sbin/smartctl")
 
 ## API Reference
 
-### Client
-
-- `NewClient() (*Client, error)` - Creates a new client, auto-detecting smartctl path
-- `NewClientWithPath(path string) *Client` - Creates a client with a specific smartctl path
-
-### Methods
-
-- `ScanDevices() ([]Device, error)` - Scans for available storage devices
-- `GetSMARTInfo(devicePath string) (*SMARTInfo, error)` - Retrieves detailed SMART information
-- `CheckHealth(devicePath string) (bool, error)` - Checks device health status
-- `GetDeviceInfo(devicePath string) (map[string]interface{}, error)` - Gets basic device information
-- `RunSelfTest(devicePath string, testType string) error` - Initiates a SMART self-test
+See [APIDOC.md](APIDOC.md) for detailed API documentation.
 
 ## Examples
 
