@@ -114,16 +114,43 @@ type OfflineDataCollection struct {
 	CompletionSeconds int    `json:"completion_seconds,omitempty"`
 }
 
+// PollingMinutes represents polling minutes for different test types
+type PollingMinutes struct {
+	Short      int `json:"short,omitempty"`
+	Extended   int `json:"extended,omitempty"`
+	Conveyance int `json:"conveyance,omitempty"`
+}
+
 // SelfTest represents self-test information
 type SelfTest struct {
-	Status         string `json:"status,omitempty"`
-	PollingMinutes int    `json:"polling_minutes,omitempty"`
+	Status         string          `json:"status,omitempty"`
+	PollingMinutes *PollingMinutes `json:"polling_minutes,omitempty"`
 }
 
 // Capabilities represents SMART capabilities
 type Capabilities struct {
-	Values               []int `json:"values,omitempty"`
-	ExecOfflineImmediate bool  `json:"exec_offline_immediate_supported,omitempty"`
+	Values                      []int `json:"values,omitempty"`
+	ExecOfflineImmediate        bool  `json:"exec_offline_immediate_supported,omitempty"`
+	SelfTestsSupported          bool  `json:"self_tests_supported,omitempty"`
+	ConveyanceSelfTestSupported bool  `json:"conveyance_self_test_supported,omitempty"`
+}
+
+// SelfTestInfo represents available self-tests and their durations
+type SelfTestInfo struct {
+	Available []string       `json:"available"`
+	Durations map[string]int `json:"durations"`
+}
+
+// NvmeOptionalAdminCommands represents NVMe optional admin commands
+type NvmeOptionalAdminCommands struct {
+	SelfTest bool `json:"self_test,omitempty"`
+}
+
+// CapabilitiesOutput represents the output of smartctl -c -j
+type CapabilitiesOutput struct {
+	AtaSmartData               *AtaSmartData               `json:"ata_smart_data,omitempty"`
+	NvmeControllerCapabilities *NvmeControllerCapabilities `json:"nvme_controller_capabilities,omitempty"`
+	NvmeOptionalAdminCommands  *NvmeOptionalAdminCommands  `json:"nvme_optional_admin_commands,omitempty"`
 }
 
 // SmartAttribute represents a single SMART attribute
@@ -360,25 +387,26 @@ func (c *Client) RunSelfTestWithProgress(ctx context.Context, devicePath string,
 		return fmt.Errorf("invalid test type: %s (must be one of: short, long, conveyance, offline)", testType)
 	}
 
-	// First check if self-tests are supported
-	smartInfo, err := c.GetSMARTInfo(devicePath)
+	// First check if self-tests are supported and get durations
+	selfTestInfo, err := c.GetAvailableSelfTests(devicePath)
 	if err != nil {
-		return fmt.Errorf("failed to get SMART info: %w", err)
+		return fmt.Errorf("failed to get self-test info: %w", err)
 	}
 
-	// Check ATA self-test support
-	supportsSelfTest := false
-	if smartInfo.AtaSmartData != nil && smartInfo.AtaSmartData.Capabilities != nil {
-		supportsSelfTest = smartInfo.AtaSmartData.Capabilities.ExecOfflineImmediate
-	}
-
-	// Check NVMe self-test support
-	if smartInfo.NvmeControllerCapabilities != nil {
-		supportsSelfTest = smartInfo.NvmeControllerCapabilities.SelfTest
-	}
-
-	if !supportsSelfTest {
+	if len(selfTestInfo.Available) == 0 {
 		return fmt.Errorf("self-tests are not supported by this device")
+	}
+
+	// Check if the requested test is available
+	available := false
+	for _, t := range selfTestInfo.Available {
+		if t == testType {
+			available = true
+			break
+		}
+	}
+	if !available {
+		return fmt.Errorf("test type %s is not available for this device", testType)
 	}
 
 	// Start the self-test
@@ -387,7 +415,7 @@ func (c *Client) RunSelfTestWithProgress(ctx context.Context, devicePath string,
 	}
 
 	if callback != nil {
-		callback(0, fmt.Sprintf("%s self-test started", strings.Title(testType)))
+		callback(0, fmt.Sprintf("%s self-test started", strings.ToUpper(string(testType[0]))+testType[1:]))
 	}
 
 	// Get expected duration based on test type
@@ -398,11 +426,9 @@ func (c *Client) RunSelfTestWithProgress(ctx context.Context, devicePath string,
 		"offline":    10,
 	}[testType]
 
-	// Use polling minutes from SMART info if available (for ATA)
-	if smartInfo.AtaSmartData != nil && smartInfo.AtaSmartData.SelfTest != nil {
-		if smartInfo.AtaSmartData.SelfTest.PollingMinutes > 0 {
-			expectedMinutes = smartInfo.AtaSmartData.SelfTest.PollingMinutes
-		}
+	// Use duration from capabilities if available
+	if duration, ok := selfTestInfo.Durations[testType]; ok && duration > 0 {
+		expectedMinutes = duration
 	}
 
 	// Poll for completion
@@ -461,34 +487,63 @@ func (c *Client) RunSelfTestWithProgress(ctx context.Context, devicePath string,
 	}
 }
 
-// GetAvailableSelfTests returns the list of available self-test types for a device
-func (c *Client) GetAvailableSelfTests(devicePath string) ([]string, error) {
-	smartInfo, err := c.GetSMARTInfo(devicePath)
+// GetAvailableSelfTests returns the list of available self-test types and their durations for a device
+func (c *Client) GetAvailableSelfTests(devicePath string) (*SelfTestInfo, error) {
+	cmd := c.commander.Command(c.smartctlPath, "-c", "-j", devicePath)
+	output, err := cmd.Output()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get SMART info: %w", err)
+		return nil, fmt.Errorf("failed to get capabilities: %w", err)
 	}
 
-	var tests []string
+	var caps CapabilitiesOutput
+	if err := json.Unmarshal(output, &caps); err != nil {
+		return nil, fmt.Errorf("failed to parse capabilities: %w", err)
+	}
 
-	// Check ATA capabilities
-	if smartInfo.AtaSmartData != nil && smartInfo.AtaSmartData.Capabilities != nil {
-		caps := smartInfo.AtaSmartData.Capabilities
-		if caps.ExecOfflineImmediate {
-			tests = append(tests, "short", "long", "offline")
+	info := &SelfTestInfo{
+		Available: []string{},
+		Durations: make(map[string]int),
+	}
+
+	// ATA
+	if caps.AtaSmartData != nil {
+		if caps.AtaSmartData.Capabilities != nil {
+			capabilities := caps.AtaSmartData.Capabilities
+			if capabilities.SelfTestsSupported {
+				info.Available = append(info.Available, "short", "long")
+			}
+			if capabilities.ConveyanceSelfTestSupported {
+				info.Available = append(info.Available, "conveyance")
+			}
+			if capabilities.ExecOfflineImmediate {
+				info.Available = append(info.Available, "offline")
+			}
 		}
-		// Conveyance test support - check if capability value indicates support
-		// For simplicity, assume conveyance is supported if offline immediate is
-		if caps.ExecOfflineImmediate {
-			tests = append(tests, "conveyance")
+		if caps.AtaSmartData.SelfTest != nil && caps.AtaSmartData.SelfTest.PollingMinutes != nil {
+			pm := caps.AtaSmartData.SelfTest.PollingMinutes
+			if pm.Short > 0 {
+				info.Durations["short"] = pm.Short
+			}
+			if pm.Extended > 0 {
+				info.Durations["long"] = pm.Extended
+			}
+			if pm.Conveyance > 0 {
+				info.Durations["conveyance"] = pm.Conveyance
+			}
 		}
 	}
 
-	// Check NVMe capabilities
-	if smartInfo.NvmeControllerCapabilities != nil && smartInfo.NvmeControllerCapabilities.SelfTest {
-		tests = append(tests, "short")
+	// NVMe
+	if caps.NvmeControllerCapabilities != nil && caps.NvmeControllerCapabilities.SelfTest {
+		info.Available = append(info.Available, "short")
+		// Durations not specified for NVMe in -c output
+	}
+	if caps.NvmeOptionalAdminCommands != nil && caps.NvmeOptionalAdminCommands.SelfTest {
+		info.Available = append(info.Available, "short")
+		// Durations not specified for NVMe in -c output
 	}
 
-	return tests, nil
+	return info, nil
 }
 
 // IsSMARTSupported checks if SMART is supported on a device and if it's enabled

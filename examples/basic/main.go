@@ -144,11 +144,16 @@ func main() {
 		fmt.Println(yellow(fmt.Sprintf("Warning: Failed to get available tests: %v", err)))
 	} else {
 		fmt.Println(blue("Available Self-Tests:"))
-		if len(availableTests) == 0 {
+		if len(availableTests.Available) == 0 {
 			fmt.Println("  None")
 		} else {
-			for _, test := range availableTests {
-				fmt.Printf("  - %s\n", test)
+			for _, test := range availableTests.Available {
+				duration := availableTests.Durations[test]
+				if duration > 0 {
+					fmt.Printf("  - %s (%d minutes)\n", test, duration)
+				} else {
+					fmt.Printf("  - %s\n", test)
+				}
 			}
 		}
 	}
