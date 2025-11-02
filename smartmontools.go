@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os/exec"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -273,6 +274,11 @@ func NewClient() (SmartClient, error) {
 	path, err := exec.LookPath("smartctl")
 	if err != nil {
 		return nil, fmt.Errorf("smartctl not found in PATH: %w", err)
+	}
+
+	// Ensure smartctl is a compatible version (JSON output requires >= 7.0)
+	if err := ensureCompatibleSmartctl(path); err != nil {
+		return nil, err
 	}
 
 	return &Client{
@@ -698,4 +704,48 @@ func (c *Client) AbortSelfTest(devicePath string) error {
 		return fmt.Errorf("failed to abort self-test: %w", err)
 	}
 	return nil
+}
+
+// ensureCompatibleSmartctl runs "smartctl -V" and checks the version is supported.
+// The library depends on JSON output (-j), which requires smartctl >= 7.0.
+func ensureCompatibleSmartctl(smartctlPath string) error {
+	out, err := exec.Command(smartctlPath, "-V").Output()
+	if err != nil {
+		return fmt.Errorf("failed to check smartctl version: %w", err)
+	}
+	major, minor, err := parseSmartctlVersion(string(out))
+	if err != nil {
+		return fmt.Errorf("unable to parse smartctl version: %w", err)
+	}
+	const minMajor, minMinor = 7, 0
+	if major < minMajor || (major == minMajor && minor < minMinor) {
+		return fmt.Errorf("unsupported smartctl version %d.%d; require >= %d.%d", major, minor, minMajor, minMinor)
+	}
+	return nil
+}
+
+// parseSmartctlVersion extracts the major and minor version numbers from
+// the output of "smartctl -V". Expected forms include lines like:
+//
+//	"smartctl 7.3 2022-02-28 r5338 ..." or "smartctl 7.5 ...".
+func parseSmartctlVersion(output string) (int, int, error) {
+	// Find first occurrence of "smartctl X.Y"
+	re := regexp.MustCompile(`(?m)\bsmartctl\s+(\d+)\.(\d+)\b`)
+	m := re.FindStringSubmatch(output)
+	if len(m) != 3 {
+		return 0, 0, fmt.Errorf("version pattern not found in output")
+	}
+	// Convert captures to ints
+	var (
+		major int
+		minor int
+	)
+	// Atoi without extra import by using fmt.Sscanf
+	if _, err := fmt.Sscanf(m[1], "%d", &major); err != nil {
+		return 0, 0, fmt.Errorf("invalid major version: %w", err)
+	}
+	if _, err := fmt.Sscanf(m[2], "%d", &minor); err != nil {
+		return 0, 0, fmt.Errorf("invalid minor version: %w", err)
+	}
+	return major, minor, nil
 }

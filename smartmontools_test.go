@@ -42,12 +42,55 @@ func (m *mockCommander) Command(name string, arg ...string) Cmd {
 func TestNewClient(t *testing.T) {
 	client, err := NewClient()
 	if err != nil {
-		t.Skip("smartctl not found in PATH, skipping test")
+		t.Skipf("smartctl not usable (missing or incompatible): %v", err)
 	}
 
 	c := client.(*Client)
 	if c.smartctlPath == "" {
 		t.Error("Expected smartctlPath to be set")
+	}
+}
+
+func TestParseSmartctlVersion(t *testing.T) {
+	cases := []struct {
+		name    string
+		input   string
+		major   int
+		minor   int
+		wantErr bool
+	}{
+		{
+			name:  "linux typical",
+			input: "smartctl 7.3 2022-02-28 r5338 [x86_64-linux] (local build)\n...",
+			major: 7, minor: 3,
+		},
+		{
+			name:  "mac typical",
+			input: "smartctl 7.4 2023-12-30 r5678 (db:7.4/5678)\n...",
+			major: 7, minor: 4,
+		},
+		{
+			name:    "no match",
+			input:   "some random output",
+			wantErr: true,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			major, minor, err := parseSmartctlVersion(tc.input)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("expected error, got none")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if major != tc.major || minor != tc.minor {
+				t.Fatalf("expected %d.%d, got %d.%d", tc.major, tc.minor, major, minor)
+			}
+		})
 	}
 }
 
