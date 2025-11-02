@@ -105,16 +105,742 @@ func TestScanDevicesError(t *testing.T) {
 
 func TestGetSMARTInfo(t *testing.T) {
 	mockJSON := `{
-		"device": {"name": "/dev/sda", "type": "ata"},
-		"model_name": "Test Drive",
-		"serial_number": "12345",
-		"smart_status": {"passed": true},
-		"smartctl": {
-			"messages": [
-				{"string": "Test informational message", "severity": "info"}
-			]
-		}
-	}`
+  "json_format_version": [
+    1,
+    0
+  ],
+  "smartctl": {
+    "version": [
+      7,
+      5
+    ],
+    "pre_release": false,
+    "svn_revision": "5714",
+    "platform_info": "x86_64-linux-6.12.43-haos",
+    "build_info": "(local build)",
+    "argv": [
+      "smartctl",
+      "-a",
+      "-j",
+      "/dev/sda"
+    ],
+    "drive_database_version": {
+      "string": "7.5/5706"
+    },
+    "exit_status": 0,
+    "messages": [
+      {"string": "Test informational message", "severity": "info"}
+    ]
+  },
+  "local_time": {
+    "time_t": 1762080587,
+    "asctime": "Sun Nov  2 11:49:47 2025 CET"
+  },
+  "device": {
+    "name": "/dev/sda",
+    "info_name": "/dev/sda [SAT]",
+    "type": "sat",
+    "protocol": "ATA"
+  },
+  "model_family": "SandForce Driven SSDs",
+  "model_name": "KINGSTON SV300S37A240G",
+  "serial_number": "50026B77560145CF",
+  "wwn": {
+    "naa": 5,
+    "oui": 9911,
+    "id": 31507695055
+  },
+  "firmware_version": "603ABBF0",
+  "user_capacity": {
+    "blocks": 468862128,
+    "bytes": 240057409536
+  },
+  "logical_block_size": 512,
+  "physical_block_size": 512,
+  "rotation_rate": 0,
+  "trim": {
+    "supported": true,
+    "deterministic": false,
+    "zeroed": false
+  },
+  "in_smartctl_database": true,
+  "ata_version": {
+    "string": "ATA8-ACS, ACS-2 T13/2015-D revision 3",
+    "major_value": 508,
+    "minor_value": 272
+  },
+  "sata_version": {
+    "string": "SATA 3.0",
+    "value": 63
+  },
+  "interface_speed": {
+    "max": {
+      "sata_value": 14,
+      "string": "6.0 Gb/s",
+      "units_per_second": 60,
+      "bits_per_unit": 100000000
+    },
+    "current": {
+      "sata_value": 3,
+      "string": "6.0 Gb/s",
+      "units_per_second": 60,
+      "bits_per_unit": 100000000
+    }
+  },
+  "smart_support": {
+    "available": true,
+    "enabled": true
+  },
+  "smart_status": {
+    "passed": true
+  },
+  "ata_smart_data": {
+    "offline_data_collection": {
+      "status": {
+        "value": 0,
+        "string": "was never started"
+      },
+      "completion_seconds": 0
+    },
+    "self_test": {
+      "status": {
+        "value": 0,
+        "string": "completed without error",
+        "passed": true
+      },
+      "polling_minutes": {
+        "short": 1,
+        "extended": 48,
+        "conveyance": 2
+      }
+    },
+    "capabilities": {
+      "values": [
+        125,
+        3
+      ],
+      "exec_offline_immediate_supported": true,
+      "offline_is_aborted_upon_new_cmd": true,
+      "offline_surface_scan_supported": true,
+      "self_tests_supported": true,
+      "conveyance_self_test_supported": true,
+      "selective_self_test_supported": true,
+      "attribute_autosave_enabled": true,
+      "error_logging_supported": true,
+      "gp_logging_supported": true
+    }
+  },
+  "ata_sct_capabilities": {
+    "value": 37,
+    "error_recovery_control_supported": false,
+    "feature_control_supported": false,
+    "data_table_supported": true
+  },
+  "ata_smart_attributes": {
+    "revision": 10,
+    "table": [
+      {
+        "id": 1,
+        "name": "Raw_Read_Error_Rate",
+        "value": 95,
+        "worst": 95,
+        "thresh": 50,
+        "when_failed": "",
+        "flags": {
+          "value": 50,
+          "string": "-O--CK ",
+          "prefailure": false,
+          "updated_online": true,
+          "performance": false,
+          "error_rate": false,
+          "event_count": true,
+          "auto_keep": true
+        },
+        "raw": {
+          "value": 189861978,
+          "string": "0/189861978"
+        }
+      },
+      {
+        "id": 5,
+        "name": "Retired_Block_Count",
+        "value": 100,
+        "worst": 100,
+        "thresh": 3,
+        "when_failed": "",
+        "flags": {
+          "value": 51,
+          "string": "PO--CK ",
+          "prefailure": true,
+          "updated_online": true,
+          "performance": false,
+          "error_rate": false,
+          "event_count": true,
+          "auto_keep": true
+        },
+        "raw": {
+          "value": 0,
+          "string": "0"
+        }
+      },
+      {
+        "id": 9,
+        "name": "Power_On_Hours_and_Msec",
+        "value": 60,
+        "worst": 60,
+        "thresh": 0,
+        "when_failed": "",
+        "flags": {
+          "value": 50,
+          "string": "-O--CK ",
+          "prefailure": false,
+          "updated_online": true,
+          "performance": false,
+          "error_rate": false,
+          "event_count": true,
+          "auto_keep": true
+        },
+        "raw": {
+          "value": 683071598791665,
+          "string": "35825h+02m+39.040s"
+        }
+      },
+      {
+        "id": 12,
+        "name": "Power_Cycle_Count",
+        "value": 100,
+        "worst": 100,
+        "thresh": 0,
+        "when_failed": "",
+        "flags": {
+          "value": 50,
+          "string": "-O--CK ",
+          "prefailure": false,
+          "updated_online": true,
+          "performance": false,
+          "error_rate": false,
+          "event_count": true,
+          "auto_keep": true
+        },
+        "raw": {
+          "value": 61,
+          "string": "61"
+        }
+      },
+      {
+        "id": 171,
+        "name": "Program_Fail_Count",
+        "value": 100,
+        "worst": 100,
+        "thresh": 0,
+        "when_failed": "",
+        "flags": {
+          "value": 10,
+          "string": "-O-R-- ",
+          "prefailure": false,
+          "updated_online": true,
+          "performance": false,
+          "error_rate": true,
+          "event_count": false,
+          "auto_keep": false
+        },
+        "raw": {
+          "value": 0,
+          "string": "0"
+        }
+      },
+      {
+        "id": 172,
+        "name": "Erase_Fail_Count",
+        "value": 100,
+        "worst": 100,
+        "thresh": 0,
+        "when_failed": "",
+        "flags": {
+          "value": 50,
+          "string": "-O--CK ",
+          "prefailure": false,
+          "updated_online": true,
+          "performance": false,
+          "error_rate": false,
+          "event_count": true,
+          "auto_keep": true
+        },
+        "raw": {
+          "value": 0,
+          "string": "0"
+        }
+      },
+      {
+        "id": 174,
+        "name": "Unexpect_Power_Loss_Ct",
+        "value": 0,
+        "worst": 0,
+        "thresh": 0,
+        "when_failed": "",
+        "flags": {
+          "value": 48,
+          "string": "----CK ",
+          "prefailure": false,
+          "updated_online": false,
+          "performance": false,
+          "error_rate": false,
+          "event_count": true,
+          "auto_keep": true
+        },
+        "raw": {
+          "value": 31,
+          "string": "31"
+        }
+      },
+      {
+        "id": 177,
+        "name": "Wear_Range_Delta",
+        "value": 0,
+        "worst": 0,
+        "thresh": 0,
+        "when_failed": "",
+        "flags": {
+          "value": 0,
+          "string": "------ ",
+          "prefailure": false,
+          "updated_online": false,
+          "performance": false,
+          "error_rate": false,
+          "event_count": false,
+          "auto_keep": false
+        },
+        "raw": {
+          "value": 1,
+          "string": "1"
+        }
+      },
+      {
+        "id": 181,
+        "name": "Program_Fail_Count",
+        "value": 100,
+        "worst": 100,
+        "thresh": 0,
+        "when_failed": "",
+        "flags": {
+          "value": 10,
+          "string": "-O-R-- ",
+          "prefailure": false,
+          "updated_online": true,
+          "performance": false,
+          "error_rate": true,
+          "event_count": false,
+          "auto_keep": false
+        },
+        "raw": {
+          "value": 0,
+          "string": "0"
+        }
+      },
+      {
+        "id": 182,
+        "name": "Erase_Fail_Count",
+        "value": 100,
+        "worst": 100,
+        "thresh": 0,
+        "when_failed": "",
+        "flags": {
+          "value": 50,
+          "string": "-O--CK ",
+          "prefailure": false,
+          "updated_online": true,
+          "performance": false,
+          "error_rate": false,
+          "event_count": true,
+          "auto_keep": true
+        },
+        "raw": {
+          "value": 0,
+          "string": "0"
+        }
+      },
+      {
+        "id": 187,
+        "name": "Reported_Uncorrect",
+        "value": 100,
+        "worst": 100,
+        "thresh": 0,
+        "when_failed": "",
+        "flags": {
+          "value": 18,
+          "string": "-O--C- ",
+          "prefailure": false,
+          "updated_online": true,
+          "performance": false,
+          "error_rate": false,
+          "event_count": true,
+          "auto_keep": false
+        },
+        "raw": {
+          "value": 0,
+          "string": "0"
+        }
+      },
+      {
+        "id": 189,
+        "name": "Airflow_Temperature_Cel",
+        "value": 29,
+        "worst": 56,
+        "thresh": 0,
+        "when_failed": "",
+        "flags": {
+          "value": 0,
+          "string": "------ ",
+          "prefailure": false,
+          "updated_online": false,
+          "performance": false,
+          "error_rate": false,
+          "event_count": false,
+          "auto_keep": false
+        },
+        "raw": {
+          "value": 77313081373,
+          "string": "29 (Min/Max 18/56)"
+        }
+      },
+      {
+        "id": 194,
+        "name": "Temperature_Celsius",
+        "value": 29,
+        "worst": 56,
+        "thresh": 0,
+        "when_failed": "",
+        "flags": {
+          "value": 34,
+          "string": "-O---K ",
+          "prefailure": false,
+          "updated_online": true,
+          "performance": false,
+          "error_rate": false,
+          "event_count": false,
+          "auto_keep": true
+        },
+        "raw": {
+          "value": 77313081373,
+          "string": "29 (Min/Max 18/56)"
+        }
+      },
+      {
+        "id": 195,
+        "name": "ECC_Uncorr_Error_Count",
+        "value": 120,
+        "worst": 120,
+        "thresh": 0,
+        "when_failed": "",
+        "flags": {
+          "value": 28,
+          "string": "--SRC- ",
+          "prefailure": false,
+          "updated_online": false,
+          "performance": true,
+          "error_rate": true,
+          "event_count": true,
+          "auto_keep": false
+        },
+        "raw": {
+          "value": 189861978,
+          "string": "0/189861978"
+        }
+      },
+      {
+        "id": 196,
+        "name": "Reallocated_Event_Count",
+        "value": 100,
+        "worst": 100,
+        "thresh": 3,
+        "when_failed": "",
+        "flags": {
+          "value": 51,
+          "string": "PO--CK ",
+          "prefailure": true,
+          "updated_online": true,
+          "performance": false,
+          "error_rate": false,
+          "event_count": true,
+          "auto_keep": true
+        },
+        "raw": {
+          "value": 0,
+          "string": "0"
+        }
+      },
+      {
+        "id": 201,
+        "name": "Unc_Soft_Read_Err_Rate",
+        "value": 120,
+        "worst": 120,
+        "thresh": 0,
+        "when_failed": "",
+        "flags": {
+          "value": 28,
+          "string": "--SRC- ",
+          "prefailure": false,
+          "updated_online": false,
+          "performance": true,
+          "error_rate": true,
+          "event_count": true,
+          "auto_keep": false
+        },
+        "raw": {
+          "value": 189861978,
+          "string": "0/189861978"
+        }
+      },
+      {
+        "id": 204,
+        "name": "Soft_ECC_Correct_Rate",
+        "value": 120,
+        "worst": 120,
+        "thresh": 0,
+        "when_failed": "",
+        "flags": {
+          "value": 28,
+          "string": "--SRC- ",
+          "prefailure": false,
+          "updated_online": false,
+          "performance": true,
+          "error_rate": true,
+          "event_count": true,
+          "auto_keep": false
+        },
+        "raw": {
+          "value": 189861978,
+          "string": "0/189861978"
+        }
+      },
+      {
+        "id": 230,
+        "name": "Life_Curve_Status",
+        "value": 100,
+        "worst": 100,
+        "thresh": 0,
+        "when_failed": "",
+        "flags": {
+          "value": 19,
+          "string": "PO--C- ",
+          "prefailure": true,
+          "updated_online": true,
+          "performance": false,
+          "error_rate": false,
+          "event_count": true,
+          "auto_keep": false
+        },
+        "raw": {
+          "value": 100,
+          "string": "100"
+        }
+      },
+      {
+        "id": 231,
+        "name": "SSD_Life_Left",
+        "value": 95,
+        "worst": 95,
+        "thresh": 11,
+        "when_failed": "",
+        "flags": {
+          "value": 0,
+          "string": "------ ",
+          "prefailure": false,
+          "updated_online": false,
+          "performance": false,
+          "error_rate": false,
+          "event_count": false,
+          "auto_keep": false
+        },
+        "raw": {
+          "value": 4294967296,
+          "string": "4294967296"
+        }
+      },
+      {
+        "id": 233,
+        "name": "SandForce_Internal",
+        "value": 0,
+        "worst": 0,
+        "thresh": 0,
+        "when_failed": "",
+        "flags": {
+          "value": 50,
+          "string": "-O--CK ",
+          "prefailure": false,
+          "updated_online": true,
+          "performance": false,
+          "error_rate": false,
+          "event_count": true,
+          "auto_keep": true
+        },
+        "raw": {
+          "value": 51384,
+          "string": "51384"
+        }
+      },
+      {
+        "id": 234,
+        "name": "SandForce_Internal",
+        "value": 0,
+        "worst": 0,
+        "thresh": 0,
+        "when_failed": "",
+        "flags": {
+          "value": 50,
+          "string": "-O--CK ",
+          "prefailure": false,
+          "updated_online": true,
+          "performance": false,
+          "error_rate": false,
+          "event_count": true,
+          "auto_keep": true
+        },
+        "raw": {
+          "value": 20878,
+          "string": "20878"
+        }
+      },
+      {
+        "id": 241,
+        "name": "Lifetime_Writes_GiB",
+        "value": 0,
+        "worst": 0,
+        "thresh": 0,
+        "when_failed": "",
+        "flags": {
+          "value": 50,
+          "string": "-O--CK ",
+          "prefailure": false,
+          "updated_online": true,
+          "performance": false,
+          "error_rate": false,
+          "event_count": true,
+          "auto_keep": true
+        },
+        "raw": {
+          "value": 20878,
+          "string": "20878"
+        }
+      },
+      {
+        "id": 242,
+        "name": "Lifetime_Reads_GiB",
+        "value": 0,
+        "worst": 0,
+        "thresh": 0,
+        "when_failed": "",
+        "flags": {
+          "value": 50,
+          "string": "-O--CK ",
+          "prefailure": false,
+          "updated_online": true,
+          "performance": false,
+          "error_rate": false,
+          "event_count": true,
+          "auto_keep": true
+        },
+        "raw": {
+          "value": 40443,
+          "string": "40443"
+        }
+      },
+      {
+        "id": 244,
+        "name": "Unknown_Attribute",
+        "value": 92,
+        "worst": 92,
+        "thresh": 10,
+        "when_failed": "",
+        "flags": {
+          "value": 0,
+          "string": "------ ",
+          "prefailure": false,
+          "updated_online": false,
+          "performance": false,
+          "error_rate": false,
+          "event_count": false,
+          "auto_keep": false
+        },
+        "raw": {
+          "value": 15925491,
+          "string": "15925491"
+        }
+      }
+    ]
+  },
+  "spare_available": {
+    "current_percent": 100,
+    "threshold_percent": 3
+  },
+  "power_on_time": {
+    "hours": 35825,
+    "minutes": 2
+  },
+  "power_cycle_count": 61,
+  "endurance_used": {
+    "current_percent": 5
+  },
+  "temperature": {
+    "current": 29
+  },
+  "ata_smart_self_test_log": {
+    "standard": {
+      "revision": 1,
+      "count": 0
+    }
+  },
+  "ata_smart_selective_self_test_log": {
+    "revision": 1,
+    "table": [
+      {
+        "lba_min": 0,
+        "lba_max": 0,
+        "status": {
+          "value": 0,
+          "string": "Not_testing"
+        }
+      },
+      {
+        "lba_min": 0,
+        "lba_max": 0,
+        "status": {
+          "value": 0,
+          "string": "Not_testing"
+        }
+      },
+      {
+        "lba_min": 0,
+        "lba_max": 0,
+        "status": {
+          "value": 0,
+          "string": "Not_testing"
+        }
+      },
+      {
+        "lba_min": 0,
+        "lba_max": 0,
+        "status": {
+          "value": 0,
+          "string": "Not_testing"
+        }
+      },
+      {
+        "lba_min": 0,
+        "lba_max": 0,
+        "status": {
+          "value": 0,
+          "string": "Not_testing"
+        }
+      }
+    ],
+    "flags": {
+      "value": 0,
+      "remainder_scan_enabled": false
+    },
+    "power_up_scan_resume_minutes": 0
+  }
+}`
 	commander := &mockCommander{
 		cmds: map[string]*mockCmd{
 			"/usr/sbin/smartctl -a -j /dev/sda": {output: []byte(mockJSON)},
@@ -131,8 +857,8 @@ func TestGetSMARTInfo(t *testing.T) {
 		t.Errorf("Expected device name /dev/sda, got %s", info.Device.Name)
 	}
 
-	if info.ModelName != "Test Drive" {
-		t.Errorf("Expected model Test Drive, got %s", info.ModelName)
+	if info.ModelName != "KINGSTON SV300S37A240G" {
+		t.Errorf("Expected model KINGSTON SV300S37A240G, got %s", info.ModelName)
 	}
 
 	if !info.SmartStatus.Passed {
