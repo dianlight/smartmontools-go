@@ -921,6 +921,79 @@ func TestGetSMARTInfo(t *testing.T) {
 	}
 }
 
+func TestGetSMARTInfoUnsupported(t *testing.T) {
+	mockJSON := `{
+  "json_format_version": [
+    1,
+    0
+  ],
+  "smartctl": {
+    "version": [
+      7,
+      5
+    ],
+    "pre_release": false,
+    "svn_revision": "5714",
+    "platform_info": "x86_64-linux-6.12.43-haos",
+    "build_info": "(local build)",
+    "argv": [
+      "smartctl",
+      "-a",
+      "-j",
+      "/dev/disk/by-id/usb-Flash_Disk_3.0_7966051146147389472-0:0"
+    ],
+    "messages": [
+      {
+        "string": "/dev/disk/by-id/usb-Flash_Disk_3.0_7966051146147389472-0:0: Unknown USB bridge [0x048d:0x1234 (0x200)]",
+        "severity": "error"
+      }
+    ],
+    "exit_status": 1
+  },
+  "local_time": {
+    "time_t": 1762097029,
+    "asctime": "Sun Nov  2 16:23:49 2025 CET"
+  }
+}`
+	commander := &mockCommander{
+		cmds: map[string]*mockCmd{
+			"/usr/sbin/smartctl -a -j /dev/sda": {output: []byte(mockJSON), err: errors.New("SMART Not Supported")},
+		},
+	}
+	client := NewClientWithCommander("/usr/sbin/smartctl", commander)
+
+	info, err := client.GetSMARTInfo("/dev/sda")
+	if err != nil && err.Error() != "SMART Not Supported" {
+		t.Errorf("Expected SMART Not Supported error, got %v", err)
+	} else if err == nil {
+		t.Errorf("Expected an error, got %v", err)
+	}
+
+	if info.Device.Name != "" {
+		t.Errorf("Expected device name empty, got %s", info.Device.Name)
+	}
+
+	if info.ModelName != "" {
+		t.Errorf("Expected model name empty, got %s", info.ModelName)
+	}
+
+	if info.SmartStatus.Passed {
+		t.Error("Expected SMART status not passed")
+	}
+
+	if info.Smartctl == nil || len(info.Smartctl.Messages) != 1 {
+		t.Errorf("Expected 1 message, got %v", info.Smartctl)
+	}
+
+	if info.Smartctl.Messages[0].String != "/dev/disk/by-id/usb-Flash_Disk_3.0_7966051146147389472-0:0: Unknown USB bridge [0x048d:0x1234 (0x200)]" {
+		t.Errorf("Expected message '/dev/disk/by-id/usb-Flash_Disk_3.0_7966051146147389472-0:0: Unknown USB bridge [0x048d:0x1234 (0x200)]', got '%s'", info.Smartctl.Messages[0].String)
+	}
+
+	if info.Smartctl.Messages[0].Severity != "error" {
+		t.Errorf("Expected severity 'error', got '%s'", info.Smartctl.Messages[0].Severity)
+	}
+}
+
 func TestGetSMARTInfoExitError(t *testing.T) {
 	mockJSON := `{
 		"device": {"name": "/dev/sda", "type": "ata"},
