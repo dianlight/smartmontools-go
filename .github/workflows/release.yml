@@ -31,6 +31,8 @@ jobs:
           if [ ! -s notes.txt ]; then
             echo "No changes since previous tag." > notes.txt
           fi
+          # Ensure notes.txt ends with a newline
+          echo "" >> notes.txt
           # Append multi-line output safely to GITHUB_OUTPUT
           {
             echo "notes<<EOF_NOTES"
