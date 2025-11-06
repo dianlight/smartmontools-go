@@ -8,7 +8,6 @@ package smartmontools
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log/slog"
 	"os/exec"
@@ -362,9 +361,13 @@ func (c *Client) GetSMARTInfo(devicePath string) (*SMARTInfo, error) {
 						slog.Warn("smartctl message", "severity", msg.Severity, "message", msg.String)
 					}
 				}
-				// Determine disk type even for unsupported devices
-				smartInfo.DiskType = determineDiskType(&smartInfo)
-				return &smartInfo, errors.New("SMART Not Supported")
+        smartInfo.DiskType = determineDiskType(&smartInfo)
+				// If we have valid device information, return it without error
+				// If device name is empty, SMART is likely not supported
+				if smartInfo.Device.Name != "" {
+					return &smartInfo, nil
+				}
+				return &smartInfo, fmt.Errorf("SMART Not Supported")
 			}
 		}
 		return nil, fmt.Errorf("failed to get SMART info: %w", err)
