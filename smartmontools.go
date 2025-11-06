@@ -361,7 +361,7 @@ func (c *Client) GetSMARTInfo(devicePath string) (*SMARTInfo, error) {
 						slog.Warn("smartctl message", "severity", msg.Severity, "message", msg.String)
 					}
 				}
-        smartInfo.DiskType = determineDiskType(&smartInfo)
+				smartInfo.DiskType = determineDiskType(&smartInfo)
 				// If we have valid device information, return it without error
 				// If device name is empty, SMART is likely not supported
 				if smartInfo.Device.Name != "" {
