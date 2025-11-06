@@ -919,6 +919,17 @@ func TestGetSMARTInfo(t *testing.T) {
 	if info.Smartctl.Messages[0].Severity != "info" {
 		t.Errorf("Expected severity 'info', got '%s'", info.Smartctl.Messages[0].Severity)
 	}
+
+	// Check rotation rate and disk type
+	if info.RotationRate == nil {
+		t.Error("Expected rotation_rate to be set")
+	} else if *info.RotationRate != 0 {
+		t.Errorf("Expected rotation_rate 0 for SSD, got %d", *info.RotationRate)
+	}
+
+	if info.DiskType != "SSD" {
+		t.Errorf("Expected disk type 'SSD', got '%s'", info.DiskType)
+	}
 }
 
 func TestGetSMARTInfoUnsupported(t *testing.T) {
@@ -1544,5 +1555,156 @@ func TestAbortSelfTestError(t *testing.T) {
 	err := client.AbortSelfTest("/dev/sda")
 	if err == nil {
 		t.Error("Expected error, got nil")
+	}
+}
+
+func TestDiskTypeDetectionSSD(t *testing.T) {
+	mockJSON := `{
+"device": {"name": "/dev/sda", "type": "sat"},
+"rotation_rate": 0,
+"model_name": "KINGSTON SV300S37A240G",
+"serial_number": "50026B77560145CF",
+"smart_status": {"passed": true}
+}`
+	commander := &mockCommander{
+		cmds: map[string]*mockCmd{
+			"/usr/sbin/smartctl -a -j /dev/sda": {output: []byte(mockJSON)},
+		},
+	}
+	client := NewClientWithCommander("/usr/sbin/smartctl", commander)
+
+	info, err := client.GetSMARTInfo("/dev/sda")
+	if err != nil {
+		t.Errorf("Expected no error, got %v", err)
+	}
+
+	if info.RotationRate == nil {
+		t.Error("Expected rotation_rate to be set")
+	} else if *info.RotationRate != 0 {
+		t.Errorf("Expected rotation_rate 0 for SSD, got %d", *info.RotationRate)
+	}
+
+	if info.DiskType != "SSD" {
+		t.Errorf("Expected disk type 'SSD', got '%s'", info.DiskType)
+	}
+}
+
+func TestDiskTypeDetectionHDD(t *testing.T) {
+	mockJSON := `{
+"device": {"name": "/dev/sdb", "type": "ata"},
+"rotation_rate": 7200,
+"model_name": "WDC WD10EZEX",
+"serial_number": "WD-WCC6Y0123456",
+"smart_status": {"passed": true}
+}`
+	commander := &mockCommander{
+		cmds: map[string]*mockCmd{
+			"/usr/sbin/smartctl -a -j /dev/sdb": {output: []byte(mockJSON)},
+		},
+	}
+	client := NewClientWithCommander("/usr/sbin/smartctl", commander)
+
+	info, err := client.GetSMARTInfo("/dev/sdb")
+	if err != nil {
+		t.Errorf("Expected no error, got %v", err)
+	}
+
+	if info.RotationRate == nil {
+		t.Error("Expected rotation_rate to be set")
+	} else if *info.RotationRate != 7200 {
+		t.Errorf("Expected rotation_rate 7200 for HDD, got %d", *info.RotationRate)
+	}
+
+	if info.DiskType != "HDD" {
+		t.Errorf("Expected disk type 'HDD', got '%s'", info.DiskType)
+	}
+}
+
+func TestDiskTypeDetectionNVMe(t *testing.T) {
+	mockJSON := `{
+"device": {"name": "/dev/nvme0n1", "type": "nvme"},
+"model_name": "Samsung SSD 970 EVO",
+"serial_number": "S5H9NJ0N123456",
+"nvme_smart_health_information_log": {
+"temperature": 35
+},
+"smart_status": {"passed": true}
+}`
+	commander := &mockCommander{
+		cmds: map[string]*mockCmd{
+			"/usr/sbin/smartctl -a -j /dev/nvme0n1": {output: []byte(mockJSON)},
+		},
+	}
+	client := NewClientWithCommander("/usr/sbin/smartctl", commander)
+
+	info, err := client.GetSMARTInfo("/dev/nvme0n1")
+	if err != nil {
+		t.Errorf("Expected no error, got %v", err)
+	}
+
+	if info.DiskType != "NVMe" {
+		t.Errorf("Expected disk type 'NVMe', got '%s'", info.DiskType)
+	}
+
+	// NVMe devices don't have rotation_rate
+	if info.RotationRate != nil {
+		t.Errorf("Expected no rotation_rate for NVMe, got %d", *info.RotationRate)
+	}
+}
+
+func TestDiskTypeDetectionUnknown(t *testing.T) {
+	mockJSON := `{
+"device": {"name": "/dev/sdc", "type": "scsi"},
+"model_name": "Generic SCSI Device",
+"serial_number": "123456",
+"smart_status": {"passed": true}
+}`
+	commander := &mockCommander{
+		cmds: map[string]*mockCmd{
+			"/usr/sbin/smartctl -a -j /dev/sdc": {output: []byte(mockJSON)},
+		},
+	}
+	client := NewClientWithCommander("/usr/sbin/smartctl", commander)
+
+	info, err := client.GetSMARTInfo("/dev/sdc")
+	if err != nil {
+		t.Errorf("Expected no error, got %v", err)
+	}
+
+	if info.DiskType != "Unknown" {
+		t.Errorf("Expected disk type 'Unknown', got '%s'", info.DiskType)
+	}
+}
+
+func TestDiskTypeDetectionSSDWithAttributes(t *testing.T) {
+	mockJSON := `{
+"device": {"name": "/dev/sda", "type": "sat"},
+"model_name": "KINGSTON SV300S37A240G",
+"serial_number": "50026B77560145CF",
+"smart_status": {"passed": true},
+"ata_smart_data": {
+"table": [
+{
+"id": 231,
+"name": "SSD_Life_Left",
+"value": 95
+}
+]
+}
+}`
+	commander := &mockCommander{
+		cmds: map[string]*mockCmd{
+			"/usr/sbin/smartctl -a -j /dev/sda": {output: []byte(mockJSON)},
+		},
+	}
+	client := NewClientWithCommander("/usr/sbin/smartctl", commander)
+
+	info, err := client.GetSMARTInfo("/dev/sda")
+	if err != nil {
+		t.Errorf("Expected no error, got %v", err)
+	}
+
+	if info.DiskType != "SSD" {
+		t.Errorf("Expected disk type 'SSD' based on attribute 231, got '%s'", info.DiskType)
 	}
 }

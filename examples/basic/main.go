@@ -115,6 +115,20 @@ func main() {
 		fmt.Printf("  Serial: %s\n", smartInfo.SerialNumber)
 		fmt.Printf("  Firmware: %s\n", smartInfo.Firmware)
 
+		// Display disk type
+		if smartInfo.DiskType != "" {
+			fmt.Printf("  Disk Type: %s\n", smartInfo.DiskType)
+		}
+
+		// Display rotation rate for HDDs
+		if smartInfo.RotationRate != nil {
+			if *smartInfo.RotationRate > 0 {
+				fmt.Printf("  Rotation Rate: %d RPM\n", *smartInfo.RotationRate)
+			} else {
+				fmt.Println("  Rotation Rate: 0 (Non-rotating)")
+			}
+		}
+
 		if smartInfo.Temperature != nil {
 			fmt.Printf("  Temperature: %d°C\n", smartInfo.Temperature.Current)
 		}
