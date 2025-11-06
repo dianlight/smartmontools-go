@@ -17,6 +17,13 @@ import (
 	"time"
 )
 
+// SMART attribute IDs for SSD detection
+const (
+	SmartAttrSSDLifeLeft       = 231 // SSD Life Left attribute
+	SmartAttrSandForceInternal = 233 // SandForce Internal (SSD-specific)
+	SmartAttrTotalLBAsWritten  = 234 // Total LBAs Written (SSD-specific)
+)
+
 // Commander interface for executing commands
 type Commander interface {
 	Command(name string, arg ...string) Cmd
@@ -83,7 +90,7 @@ type SMARTInfo struct {
 	SerialNumber               string                      `json:"serial_number,omitempty"`
 	Firmware                   string                      `json:"firmware_version,omitempty"`
 	UserCapacity               *UserCapacity               `json:"user_capacity,omitempty"`
-	RotationRate               *int                        `json:"rotation_rate,omitempty"` // Rotation rate in RPM (0 for SSDs, >0 for HDDs, nil if not available)
+	RotationRate               *int                        `json:"rotation_rate,omitempty"` // Rotation rate in RPM (0 for SSDs, >0 for HDDs, nil if not available or not applicable)
 	DiskType                   string                      `json:"-"`                       // Computed disk type: "SSD", "HDD", "NVMe", or "Unknown"
 	SmartStatus                SmartStatus                 `json:"smart_status,omitempty"`
 	SmartSupport               *SmartSupport               `json:"smart_support,omitempty"`
@@ -392,9 +399,8 @@ func determineDiskType(info *SMARTInfo) string {
 	if info.RotationRate != nil {
 		if *info.RotationRate == 0 {
 			return "SSD"
-		} else if *info.RotationRate > 0 {
-			return "HDD"
 		}
+		return "HDD"
 	}
 
 	// Check device type from smartctl
@@ -405,11 +411,10 @@ func determineDiskType(info *SMARTInfo) string {
 	if strings.Contains(deviceType, "sata") || strings.Contains(deviceType, "ata") || strings.Contains(deviceType, "sat") {
 		// If we have ATA SMART data but no rotation rate, try to infer
 		if info.AtaSmartData != nil {
-			// Look for SSD-specific attributes (e.g., SSD Life Left, Wear Leveling)
+			// Look for SSD-specific attributes
 			if info.AtaSmartData.Table != nil {
 				for _, attr := range info.AtaSmartData.Table {
-					if attr.ID == 231 || attr.ID == 233 || attr.ID == 234 {
-						// Common SSD attributes
+					if attr.ID == SmartAttrSSDLifeLeft || attr.ID == SmartAttrSandForceInternal || attr.ID == SmartAttrTotalLBAsWritten {
 						return "SSD"
 					}
 				}
