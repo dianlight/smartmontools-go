@@ -75,6 +75,7 @@ type UserCapacity struct {
 	Bytes  int64 `json:"bytes"`
 }
 
+// SMARTInfo represents comprehensive SMART information for a storage device
 type SMARTInfo struct {
 	Device                     Device                      `json:"device"`
 	ModelFamily                string                      `json:"model_family,omitempty"`
@@ -82,8 +83,8 @@ type SMARTInfo struct {
 	SerialNumber               string                      `json:"serial_number,omitempty"`
 	Firmware                   string                      `json:"firmware_version,omitempty"`
 	UserCapacity               *UserCapacity               `json:"user_capacity,omitempty"`
-	RotationRate               *int                        `json:"rotation_rate,omitempty"`
-	DiskType                   string                      `json:"-"`
+	RotationRate               *int                        `json:"rotation_rate,omitempty"` // Rotation rate in RPM (0 for SSDs, >0 for HDDs, nil if not available)
+	DiskType                   string                      `json:"-"`                       // Computed disk type: "SSD", "HDD", "NVMe", or "Unknown"
 	SmartStatus                SmartStatus                 `json:"smart_status,omitempty"`
 	SmartSupport               *SmartSupport               `json:"smart_support,omitempty"`
 	AtaSmartData               *AtaSmartData               `json:"ata_smart_data,omitempty"`
