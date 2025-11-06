@@ -82,6 +82,8 @@ type SMARTInfo struct {
 	SerialNumber               string                      `json:"serial_number,omitempty"`
 	Firmware                   string                      `json:"firmware_version,omitempty"`
 	UserCapacity               *UserCapacity               `json:"user_capacity,omitempty"`
+	RotationRate               *int                        `json:"rotation_rate,omitempty"`
+	DiskType                   string                      `json:"-"`
 	SmartStatus                SmartStatus                 `json:"smart_status,omitempty"`
 	SmartSupport               *SmartSupport               `json:"smart_support,omitempty"`
 	AtaSmartData               *AtaSmartData               `json:"ata_smart_data,omitempty"`
@@ -352,6 +354,8 @@ func (c *Client) GetSMARTInfo(devicePath string) (*SMARTInfo, error) {
 						slog.Warn("smartctl message", "severity", msg.Severity, "message", msg.String)
 					}
 				}
+				// Determine disk type even for unsupported devices
+				smartInfo.DiskType = determineDiskType(&smartInfo)
 				return &smartInfo, errors.New("SMART Not Supported")
 			}
 		}
@@ -370,7 +374,50 @@ func (c *Client) GetSMARTInfo(devicePath string) (*SMARTInfo, error) {
 		}
 	}
 
+	// Determine disk type based on rotation rate and device type
+	smartInfo.DiskType = determineDiskType(&smartInfo)
+
 	return &smartInfo, nil
+}
+
+// determineDiskType determines the type of disk based on available information
+func determineDiskType(info *SMARTInfo) string {
+	// Check for NVMe devices first
+	if info.Device.Type == "nvme" || info.NvmeSmartHealth != nil || info.NvmeControllerCapabilities != nil {
+		return "NVMe"
+	}
+
+	// Check rotation rate for ATA/SATA devices
+	if info.RotationRate != nil {
+		if *info.RotationRate == 0 {
+			return "SSD"
+		} else if *info.RotationRate > 0 {
+			return "HDD"
+		}
+	}
+
+	// Check device type from smartctl
+	deviceType := strings.ToLower(info.Device.Type)
+	if strings.Contains(deviceType, "nvme") {
+		return "NVMe"
+	}
+	if strings.Contains(deviceType, "sata") || strings.Contains(deviceType, "ata") || strings.Contains(deviceType, "sat") {
+		// If we have ATA SMART data but no rotation rate, try to infer
+		if info.AtaSmartData != nil {
+			// Look for SSD-specific attributes (e.g., SSD Life Left, Wear Leveling)
+			if info.AtaSmartData.Table != nil {
+				for _, attr := range info.AtaSmartData.Table {
+					if attr.ID == 231 || attr.ID == 233 || attr.ID == 234 {
+						// Common SSD attributes
+						return "SSD"
+					}
+				}
+			}
+		}
+	}
+
+	// If we can't determine, return Unknown
+	return "Unknown"
 }
 
 // CheckHealth checks if a device is healthy according to SMART
