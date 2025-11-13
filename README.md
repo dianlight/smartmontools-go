@@ -164,6 +164,14 @@ This library uses a command-line wrapper approach, executing `smartctl` commands
 
 While the project references libgoffi in its description, the current implementation uses the command-line interface for maximum compatibility and reliability. Future versions may incorporate direct library bindings using libgoffi for enhanced performance.
 
+📚 **For a comprehensive analysis of different SMART access approaches**, see our [Architecture Decision Record (ADR-001)](./docs/architecture/ADR-001-smart-access-approaches.md), which covers:
+- Command wrapper (current approach)
+- Direct ioctl access
+- Shared library with FFI
+- Hybrid approaches
+
+The ADR includes detailed comparisons, code examples, performance benchmarks, and recommendations for different use cases.
+
 ## Implementation details
 
 - Execution model: the library locates (or is given) a `smartctl` binary and executes it (os/exec). Commands use `--json` where available and the library parses the resulting JSON output.
