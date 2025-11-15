@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -274,8 +275,10 @@ type SmartClient interface {
 
 // Client represents a smartmontools client
 type Client struct {
-	smartctlPath string
-	commander    Commander
+	smartctlPath       string
+	commander          Commander
+	deviceTypeCache    map[string]string // Maps device path to device type (e.g., "sat")
+	deviceTypeCacheMux sync.RWMutex      // Protects deviceTypeCache
 }
 
 // NewClient creates a new smartmontools client
@@ -292,24 +295,27 @@ func NewClient() (SmartClient, error) {
 	}
 
 	return &Client{
-		smartctlPath: path,
-		commander:    execCommander{},
+		smartctlPath:    path,
+		commander:       execCommander{},
+		deviceTypeCache: make(map[string]string),
 	}, nil
 }
 
 // NewClientWithPath creates a new smartmontools client with a specific smartctl path
 func NewClientWithPath(smartctlPath string) SmartClient {
 	return &Client{
-		smartctlPath: smartctlPath,
-		commander:    execCommander{},
+		smartctlPath:    smartctlPath,
+		commander:       execCommander{},
+		deviceTypeCache: make(map[string]string),
 	}
 }
 
 // NewClientWithCommander creates a new client with a custom commander (for testing)
 func NewClientWithCommander(smartctlPath string, commander Commander) SmartClient {
 	return &Client{
-		smartctlPath: smartctlPath,
-		commander:    commander,
+		smartctlPath:    smartctlPath,
+		commander:       commander,
+		deviceTypeCache: make(map[string]string),
 	}
 }
 
@@ -343,9 +349,46 @@ func (c *Client) ScanDevices() ([]Device, error) {
 	return devices, nil
 }
 
+// isUnknownUSBBridge checks if the smartctl messages contain an "Unknown USB bridge" error
+func isUnknownUSBBridge(smartInfo *SMARTInfo) bool {
+	if smartInfo == nil || smartInfo.Smartctl == nil {
+		return false
+	}
+	for _, msg := range smartInfo.Smartctl.Messages {
+		if strings.Contains(msg.String, "Unknown USB bridge") {
+			return true
+		}
+	}
+	return false
+}
+
+// getCachedDeviceType retrieves a cached device type for the given device path
+func (c *Client) getCachedDeviceType(devicePath string) (string, bool) {
+	c.deviceTypeCacheMux.RLock()
+	defer c.deviceTypeCacheMux.RUnlock()
+	deviceType, ok := c.deviceTypeCache[devicePath]
+	return deviceType, ok
+}
+
+// setCachedDeviceType stores a device type in the cache for the given device path
+func (c *Client) setCachedDeviceType(devicePath, deviceType string) {
+	c.deviceTypeCacheMux.Lock()
+	defer c.deviceTypeCacheMux.Unlock()
+	c.deviceTypeCache[devicePath] = deviceType
+	slog.Debug("Cached device type", "devicePath", devicePath, "deviceType", deviceType)
+}
+
 // GetSMARTInfo retrieves SMART information for a device
 func (c *Client) GetSMARTInfo(devicePath string) (*SMARTInfo, error) {
-	cmd := c.commander.Command(c.smartctlPath, "-a", "-j", devicePath)
+	// Check if we have a cached device type for this device
+	var args []string
+	if cachedType, ok := c.getCachedDeviceType(devicePath); ok {
+		args = []string{"-d", cachedType, "-a", "-j", devicePath}
+	} else {
+		args = []string{"-a", "-j", devicePath}
+	}
+
+	cmd := c.commander.Command(c.smartctlPath, args...)
 	output, err := cmd.Output()
 	if err != nil {
 		// smartctl returns non-zero exit codes for various conditions
@@ -361,6 +404,33 @@ func (c *Client) GetSMARTInfo(devicePath string) (*SMARTInfo, error) {
 						slog.Warn("smartctl message", "severity", msg.Severity, "message", msg.String)
 					}
 				}
+
+				// Check if this is an unknown USB bridge error and we haven't cached a type yet
+				if isUnknownUSBBridge(&smartInfo) {
+					_, hasCached := c.getCachedDeviceType(devicePath)
+					if !hasCached {
+						slog.Info("Unknown USB bridge detected, retrying with -d sat", "devicePath", devicePath)
+						// Retry with -d sat
+						satCmd := c.commander.Command(c.smartctlPath, "-d", "sat", "-a", "-j", devicePath)
+						satOutput, satErr := satCmd.Output()
+						if satErr == nil || len(satOutput) > 0 {
+							var satSmartInfo SMARTInfo
+							if json.Unmarshal(satOutput, &satSmartInfo) == nil {
+								// Check if SMART is supported with -d sat
+								if satSmartInfo.Device.Name != "" {
+									// Success! Cache the device type
+									c.setCachedDeviceType(devicePath, "sat")
+									slog.Info("Successfully accessed device with -d sat", "devicePath", devicePath)
+									satSmartInfo.DiskType = determineDiskType(&satSmartInfo)
+									return &satSmartInfo, nil
+								}
+							}
+						}
+						// If -d sat didn't work, log the failure
+						slog.Debug("Retry with -d sat failed", "devicePath", devicePath, "error", satErr)
+					}
+				}
+
 				smartInfo.DiskType = determineDiskType(&smartInfo)
 				// If we have valid device information, return it without error
 				// If device name is empty, SMART is likely not supported
