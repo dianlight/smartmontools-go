@@ -19,6 +19,7 @@ A Go library that interfaces with smartmontools to monitor and manage storage de
 - 🌡️ **Temperature Monitoring**: Track device temperature
 - ⚙️ **Self-Tests**: Initiate and monitor SMART self-tests
 - 🔧 **Device Information**: Retrieve model, serial number, firmware version, and more
+- 🔌 **USB Bridge Support**: Automatic fallback for unknown USB bridges with embedded device database
 
 ## Prerequisites
 
@@ -138,6 +139,29 @@ if err != nil {
 // If smartctl is not in PATH or you want to use a specific binary
 client := smartmontools.NewClientWithPath("/usr/local/sbin/smartctl")
 ```
+
+### USB Bridge Support
+
+The library includes automatic support for USB storage devices that use unknown USB bridges. When smartctl reports an "Unknown USB bridge" error, the library:
+
+1. **Checks embedded database**: Looks up the USB vendor:product ID in the embedded `drivedb_addendum.txt` file
+2. **Automatic fallback**: If found, uses the known device type; otherwise falls back to `-d sat`
+3. **Caches results**: Remembers successful device types for faster future access
+
+```go
+client, _ := smartmontools.NewClient()
+
+// Works automatically with USB bridges, even if unknown to smartctl
+info, err := client.GetSMARTInfo("/dev/disk/by-id/usb-Intenso_Memory_Center-0:0")
+if err != nil {
+    log.Fatalf("Failed to get SMART info: %v", err)
+}
+
+fmt.Printf("Model: %s\n", info.ModelName)
+fmt.Printf("Health: %v\n", info.SmartStatus.Passed)
+```
+
+The embedded database includes common USB-SATA bridges from community reports and smartmontools issues. See [docs/drivedb_addendum.md](./docs/drivedb_addendum.md) for details.
 
 ## API Reference
 

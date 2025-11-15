@@ -1708,3 +1708,412 @@ func TestDiskTypeDetectionSSDWithAttributes(t *testing.T) {
 		t.Errorf("Expected disk type 'SSD' based on attribute 231, got '%s'", info.DiskType)
 	}
 }
+
+func TestGetSMARTInfoUnknownUSBBridgeFallback(t *testing.T) {
+	mockJSONWithError := `{
+  "json_format_version": [1, 0],
+  "smartctl": {
+    "version": [7, 5],
+    "messages": [
+      {
+        "string": "/dev/disk/by-id/usb-Flash_Disk_3.0_7966051146147389472-0:0: Unknown USB bridge [0x048d:0x1234 (0x200)]",
+        "severity": "error"
+      }
+    ],
+    "exit_status": 1
+  },
+  "device": {"name": "", "type": ""}
+}`
+
+	mockJSONWithSat := `{
+  "json_format_version": [1, 0],
+  "smartctl": {
+    "version": [7, 5],
+    "exit_status": 0
+  },
+  "device": {
+    "name": "/dev/disk/by-id/usb-Flash_Disk_3.0_7966051146147389472-0:0",
+    "type": "sat"
+  },
+  "model_name": "Flash Disk 3.0",
+  "serial_number": "7966051146147389472",
+  "smart_status": {"passed": true},
+  "rotation_rate": 0
+}`
+
+	commander := &mockCommander{
+		cmds: map[string]*mockCmd{
+			"/usr/sbin/smartctl -a -j /dev/usb0": {
+				output: []byte(mockJSONWithError),
+				err:    errors.New("exit status 1"),
+			},
+			"/usr/sbin/smartctl -d sat -a -j /dev/usb0": {
+				output: []byte(mockJSONWithSat),
+			},
+		},
+	}
+	client := NewClientWithCommander("/usr/sbin/smartctl", commander)
+
+	// First call should detect unknown USB bridge and retry with -d sat
+	info, err := client.GetSMARTInfo("/dev/usb0")
+	if err != nil {
+		t.Errorf("Expected no error after fallback, got %v", err)
+	}
+
+	if info.Device.Name != "/dev/disk/by-id/usb-Flash_Disk_3.0_7966051146147389472-0:0" {
+		t.Errorf("Expected device name from sat fallback, got %s", info.Device.Name)
+	}
+
+	if info.Device.Type != "sat" {
+		t.Errorf("Expected device type 'sat', got %s", info.Device.Type)
+	}
+
+	// Verify the device type is cached
+	c := client.(*Client)
+	cachedType, ok := c.getCachedDeviceType("/dev/usb0")
+	if !ok {
+		t.Error("Expected device type to be cached")
+	}
+	if cachedType != "sat" {
+		t.Errorf("Expected cached device type 'sat', got %s", cachedType)
+	}
+}
+
+func TestGetSMARTInfoUnknownUSBBridgeFallbackAlreadyCached(t *testing.T) {
+	mockJSONWithSat := `{
+  "json_format_version": [1, 0],
+  "smartctl": {
+    "version": [7, 5],
+    "exit_status": 0
+  },
+  "device": {
+    "name": "/dev/disk/by-id/usb-Flash_Disk_3.0_7966051146147389472-0:0",
+    "type": "sat"
+  },
+  "model_name": "Flash Disk 3.0",
+  "serial_number": "7966051146147389472",
+  "smart_status": {"passed": true},
+  "rotation_rate": 0
+}`
+
+	commander := &mockCommander{
+		cmds: map[string]*mockCmd{
+			"/usr/sbin/smartctl -d sat -a -j /dev/usb0": {
+				output: []byte(mockJSONWithSat),
+			},
+		},
+	}
+	client := NewClientWithCommander("/usr/sbin/smartctl", commander)
+
+	// Pre-cache the device type
+	c := client.(*Client)
+	c.setCachedDeviceType("/dev/usb0", "sat")
+
+	// This call should use the cached device type and not try the default first
+	info, err := client.GetSMARTInfo("/dev/usb0")
+	if err != nil {
+		t.Errorf("Expected no error with cached type, got %v", err)
+	}
+
+	if info.Device.Name != "/dev/disk/by-id/usb-Flash_Disk_3.0_7966051146147389472-0:0" {
+		t.Errorf("Expected device name, got %s", info.Device.Name)
+	}
+
+	if info.Device.Type != "sat" {
+		t.Errorf("Expected device type 'sat', got %s", info.Device.Type)
+	}
+}
+
+func TestGetSMARTInfoUnknownUSBBridgeFallbackFailed(t *testing.T) {
+	mockJSONWithError := `{
+  "json_format_version": [1, 0],
+  "smartctl": {
+    "version": [7, 5],
+    "messages": [
+      {
+        "string": "/dev/disk/by-id/usb-Flash_Disk_3.0_7966051146147389472-0:0: Unknown USB bridge [0x048d:0x1234 (0x200)]",
+        "severity": "error"
+      }
+    ],
+    "exit_status": 1
+  },
+  "device": {"name": "", "type": ""}
+}`
+
+	commander := &mockCommander{
+		cmds: map[string]*mockCmd{
+			"/usr/sbin/smartctl -a -j /dev/usb0": {
+				output: []byte(mockJSONWithError),
+				err:    errors.New("exit status 1"),
+			},
+			"/usr/sbin/smartctl -d sat -a -j /dev/usb0": {
+				err: errors.New("sat failed"),
+			},
+		},
+	}
+	client := NewClientWithCommander("/usr/sbin/smartctl", commander)
+
+	// Should fail after trying both default and -d sat
+	info, err := client.GetSMARTInfo("/dev/usb0")
+	if err == nil || err.Error() != "SMART Not Supported" {
+		t.Errorf("Expected 'SMART Not Supported' error, got %v", err)
+	}
+
+	if info.Device.Name != "" {
+		t.Errorf("Expected empty device name, got %s", info.Device.Name)
+	}
+
+	// Verify the device type is NOT cached (fallback failed)
+	c := client.(*Client)
+	_, ok := c.getCachedDeviceType("/dev/usb0")
+	if ok {
+		t.Error("Expected device type not to be cached when fallback fails")
+	}
+}
+
+func TestIsUnknownUSBBridge(t *testing.T) {
+	tests := []struct {
+		name     string
+		messages []Message
+		expected bool
+	}{
+		{
+			name: "Unknown USB bridge message",
+			messages: []Message{
+				{String: "/dev/sda: Unknown USB bridge [0x048d:0x1234 (0x200)]", Severity: "error"},
+			},
+			expected: true,
+		},
+		{
+			name: "No Unknown USB bridge message",
+			messages: []Message{
+				{String: "Some other error", Severity: "error"},
+			},
+			expected: false,
+		},
+		{
+			name:     "No messages",
+			messages: []Message{},
+			expected: false,
+		},
+		{
+			name: "Multiple messages with Unknown USB bridge",
+			messages: []Message{
+				{String: "Info message", Severity: "info"},
+				{String: "Unknown USB bridge detected", Severity: "error"},
+			},
+			expected: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			smartInfo := &SMARTInfo{
+				Smartctl: &SmartctlInfo{
+					Messages: tt.messages,
+				},
+			}
+			result := isUnknownUSBBridge(smartInfo)
+			if result != tt.expected {
+				t.Errorf("Expected %v, got %v", tt.expected, result)
+			}
+		})
+	}
+
+	// Test with nil smartInfo
+	if isUnknownUSBBridge(nil) {
+		t.Error("Expected false for nil smartInfo")
+	}
+
+	// Test with nil Smartctl
+	if isUnknownUSBBridge(&SMARTInfo{}) {
+		t.Error("Expected false for nil Smartctl")
+	}
+}
+
+func TestExtractUSBBridgeID(t *testing.T) {
+	tests := []struct {
+		name     string
+		messages []Message
+		expected string
+	}{
+		{
+			name: "Standard USB bridge message",
+			messages: []Message{
+				{String: "/dev/sda: Unknown USB bridge [0x152d:0x578e (0x200)]", Severity: "error"},
+			},
+			expected: "usb:0x152d:0x578e",
+		},
+		{
+			name: "USB bridge with uppercase hex",
+			messages: []Message{
+				{String: "/dev/sda: Unknown USB bridge [0x152D:0xA580 (0x209)]", Severity: "error"},
+			},
+			expected: "usb:0x152d:0xa580",
+		},
+		{
+			name: "No USB bridge message",
+			messages: []Message{
+				{String: "Some other error", Severity: "error"},
+			},
+			expected: "",
+		},
+		{
+			name:     "Empty messages",
+			messages: []Message{},
+			expected: "",
+		},
+		{
+			name: "USB bridge in second message",
+			messages: []Message{
+				{String: "Info message", Severity: "info"},
+				{String: "Unknown USB bridge [0x0bda:0x9201 (0xf200)]", Severity: "error"},
+			},
+			expected: "usb:0x0bda:0x9201",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			smartInfo := &SMARTInfo{
+				Smartctl: &SmartctlInfo{
+					Messages: tt.messages,
+				},
+			}
+			result := extractUSBBridgeID(smartInfo)
+			if result != tt.expected {
+				t.Errorf("Expected %q, got %q", tt.expected, result)
+			}
+		})
+	}
+
+	// Test with nil smartInfo
+	if extractUSBBridgeID(nil) != "" {
+		t.Error("Expected empty string for nil smartInfo")
+	}
+
+	// Test with nil Smartctl
+	if extractUSBBridgeID(&SMARTInfo{}) != "" {
+		t.Error("Expected empty string for nil Smartctl")
+	}
+}
+
+func TestLoadDrivedbAddendum(t *testing.T) {
+	cache := loadDrivedbAddendum()
+
+	// Check that some known entries are loaded
+	expectedEntries := map[string]string{
+		"usb:0x152d:0x578e": "sat",
+		"usb:0x152d:0xa580": "sat",
+		"usb:0x0bda:0x9201": "sat",
+		"usb:0x059f:0x1029": "sat",
+	}
+
+	for key, expectedValue := range expectedEntries {
+		if value, ok := cache[key]; !ok {
+			t.Errorf("Expected key %q to be in cache", key)
+		} else if value != expectedValue {
+			t.Errorf("Expected value %q for key %q, got %q", expectedValue, key, value)
+		}
+	}
+
+	// Check that we have a reasonable number of entries
+	if len(cache) < 10 {
+		t.Errorf("Expected at least 10 entries in drivedb addendum, got %d", len(cache))
+	}
+}
+
+func TestNewClientLoadsAddendum(t *testing.T) {
+	client, err := NewClient()
+	if err != nil {
+		t.Skipf("smartctl not available: %v", err)
+	}
+
+	c := client.(*Client)
+	c.deviceTypeCacheMux.RLock()
+	cacheSize := len(c.deviceTypeCache)
+	c.deviceTypeCacheMux.RUnlock()
+
+	// Cache should be prepopulated with addendum entries
+	if cacheSize < 10 {
+		t.Errorf("Expected cache to be prepopulated with at least 10 entries, got %d", cacheSize)
+	}
+
+	// Check that a known USB bridge is in the cache
+	if deviceType, ok := c.getCachedDeviceType("usb:0x152d:0x578e"); !ok {
+		t.Error("Expected usb:0x152d:0x578e to be in cache")
+	} else if deviceType != "sat" {
+		t.Errorf("Expected device type 'sat', got %q", deviceType)
+	}
+}
+
+func TestGetSMARTInfoWithKnownUSBBridge(t *testing.T) {
+	mockJSONWithError := `{
+  "json_format_version": [1, 0],
+  "smartctl": {
+    "version": [7, 5],
+    "messages": [
+      {
+        "string": "/dev/usb0: Unknown USB bridge [0x152d:0x578e (0x200)]",
+        "severity": "error"
+      }
+    ],
+    "exit_status": 1
+  },
+  "device": {"name": "", "type": ""}
+}`
+
+	mockJSONWithSat := `{
+  "json_format_version": [1, 0],
+  "smartctl": {
+    "version": [7, 5],
+    "exit_status": 0
+  },
+  "device": {
+    "name": "/dev/usb0",
+    "type": "sat"
+  },
+  "model_name": "Intenso Memory Center",
+  "serial_number": "123456",
+  "smart_status": {"passed": true},
+  "rotation_rate": 0
+}`
+
+	commander := &mockCommander{
+		cmds: map[string]*mockCmd{
+			"/usr/sbin/smartctl -a -j /dev/usb0": {
+				output: []byte(mockJSONWithError),
+				err:    errors.New("exit status 1"),
+			},
+			"/usr/sbin/smartctl -d sat -a -j /dev/usb0": {
+				output: []byte(mockJSONWithSat),
+			},
+		},
+	}
+
+	// Create client with empty cache (like test constructor)
+	client := &Client{
+		smartctlPath:    "/usr/sbin/smartctl",
+		commander:       commander,
+		deviceTypeCache: loadDrivedbAddendum(),
+	}
+
+	// First call should detect USB bridge in addendum and use sat
+	info, err := client.GetSMARTInfo("/dev/usb0")
+	if err != nil {
+		t.Errorf("Expected no error after using addendum, got %v", err)
+	}
+
+	if info.Device.Name != "/dev/usb0" {
+		t.Errorf("Expected device name /dev/usb0, got %s", info.Device.Name)
+	}
+
+	// Verify the device path is cached
+	cachedType, ok := client.getCachedDeviceType("/dev/usb0")
+	if !ok {
+		t.Error("Expected device path to be cached")
+	}
+	if cachedType != "sat" {
+		t.Errorf("Expected cached device type 'sat', got %s", cachedType)
+	}
+}
