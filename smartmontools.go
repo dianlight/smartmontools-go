@@ -6,7 +6,6 @@
 package smartmontools
 
 import (
-	"bufio"
 	"context"
 	_ "embed"
 	"encoding/json"
@@ -19,8 +18,8 @@ import (
 	"time"
 )
 
-//go:embed drivedb_addendum.txt
-var drivedbAddendum string
+//go:embed drivedb.h
+var drivedbH string
 
 // SMART attribute IDs for SSD detection
 const (
@@ -286,37 +285,163 @@ type Client struct {
 	deviceTypeCacheMux sync.RWMutex      // Protects deviceTypeCache
 }
 
-// loadDrivedbAddendum parses the embedded drivedb_addendum.txt file and returns
-// a map of device identifiers to device types. The file format is:
+// loadDrivedbAddendum parses the embedded drivedb.h file from smartmontools
+// and returns a map of USB device identifiers to device types.
 //
-//	usb:<vendor_id>:<product_id> <device_type>
+// The drivedb.h file contains C-style struct entries. USB entries have:
+//   - modelfamily starting with "USB:"
+//   - modelregexp containing USB vendor:product ID (e.g., "0x152d:0x0578")
+//   - presets containing device type after "-d " (e.g., "-d sat")
 //
-// Lines starting with # are comments and empty lines are ignored.
+// Returns a map with keys in format "usb:0x152d:0x0578" -> device type "sat"
 func loadDrivedbAddendum() map[string]string {
 	cache := make(map[string]string)
-	scanner := bufio.NewScanner(strings.NewReader(drivedbAddendum))
 
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
+	// Regular expressions to parse drivedb.h entries
+	// Match entries starting with { "USB:
+	usbEntryPattern := regexp.MustCompile(`\{\s*"USB:`)
+	// Match quoted strings (for modelfamily, modelregexp, firmwareregexp, warningmsg, presets)
+	quotedStringPattern := regexp.MustCompile(`"([^"]*)"`)
+	// Match device type in presets: -d <type> (may have options like "sat,12")
+	deviceTypePattern := regexp.MustCompile(`-d\s+(\S+)`)
 
-		// Skip empty lines and comments
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
+	// Split into lines and process
+	lines := strings.Split(drivedbH, "\n")
+	var inUSBEntry bool
+	var currentFields []string
+
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+
+		// Check if this is the start of a USB entry
+		if usbEntryPattern.MatchString(line) {
+			inUSBEntry = true
+			currentFields = []string{}
 		}
 
-		// Parse line: "usb:0x152d:0x578e sat"
-		parts := strings.Fields(line)
-		if len(parts) < 2 {
-			continue
-		}
+		if inUSBEntry {
+			// Extract all quoted strings from this line
+			matches := quotedStringPattern.FindAllStringSubmatch(line, -1)
+			for _, match := range matches {
+				if len(match) > 1 {
+					currentFields = append(currentFields, match[1])
+				}
+			}
 
-		deviceID := parts[0]
-		deviceType := parts[1]
-		cache[deviceID] = deviceType
+			// Check if we've reached the end of this entry (closing brace)
+			if strings.Contains(line, "},") || (strings.Contains(line, "}") && !strings.Contains(line, "{")) {
+				inUSBEntry = false
+
+				// Process the complete entry
+				// Expected fields: [modelfamily, modelregexp, firmwareregexp, warningmsg, presets]
+				if len(currentFields) >= 5 {
+					modelfamily := currentFields[0]
+					modelregexp := currentFields[1]
+					presets := currentFields[4]
+
+					// Only process USB entries
+					if strings.HasPrefix(modelfamily, "USB:") {
+						// Extract device type from presets
+						deviceTypeMatch := deviceTypePattern.FindStringSubmatch(presets)
+						if len(deviceTypeMatch) > 1 {
+							deviceType := deviceTypeMatch[1]
+							// Remove any options after comma (e.g., "sat,12" -> "sat")
+							if commaIdx := strings.Index(deviceType, ","); commaIdx != -1 {
+								deviceType = deviceType[:commaIdx]
+							}
+
+							// Parse USB vendor:product IDs from modelregexp
+							// The modelregexp can contain simple IDs like "0x152d:0x0578"
+							// or regex patterns like "0x152d:0x05(7[789]|80)"
+							// For simplicity, we'll extract exact matches and simple patterns
+							usbIDs := extractUSBIDs(modelregexp)
+							for _, usbID := range usbIDs {
+								key := "usb:" + strings.ToLower(usbID)
+								cache[key] = deviceType
+							}
+						}
+					}
+				}
+				currentFields = []string{}
+			}
+		}
 	}
 
-	slog.Debug("Loaded drivedb addendum", "entries", len(cache))
+	slog.Debug("Loaded drivedb from smartmontools drivedb.h", "entries", len(cache))
 	return cache
+}
+
+// extractUSBIDs extracts USB vendor:product IDs from a modelregexp pattern.
+// Returns a slice of IDs in format "0xVVVV:0xPPPP"
+// Handles both exact matches and expands common regex patterns.
+func extractUSBIDs(modelregexp string) []string {
+	var ids []string
+
+	// Pattern to match USB IDs with exact hex: 0xVVVV:0xPPPP
+	exactPattern := regexp.MustCompile(`(0x[0-9a-fA-F]{4}:0x[0-9a-fA-F]{4})`)
+	matches := exactPattern.FindAllString(modelregexp, -1)
+	for _, match := range matches {
+		ids = append(ids, match)
+	}
+
+	// Handle common regex patterns in product ID
+	// Pattern like "0x152d:0x05(7[789]|80)" -> expand to 0x0577, 0x0578, 0x0579, 0x0580
+	regexPattern := regexp.MustCompile(`(0x[0-9a-fA-F]{4}):0x([0-9a-fA-F]{2})\(([^\)]+)\)`)
+	regexMatches := regexPattern.FindAllStringSubmatch(modelregexp, -1)
+	for _, match := range regexMatches {
+		if len(match) >= 4 {
+			vendor := match[1]
+			prefix := match[2]
+			alternatives := match[3]
+
+			// Handle alternatives like "7[789]|80"
+			// Split by |
+			parts := strings.Split(alternatives, "|")
+			for _, part := range parts {
+				expandedIDs := expandProductIDPattern(vendor, prefix, part)
+				ids = append(ids, expandedIDs...)
+			}
+		}
+	}
+
+	// Handle patterns like "0x0480:0x...." (wildcard) - these are too broad to expand
+	// We'll skip these for now as they would create too many entries
+
+	return ids
+}
+
+// expandProductIDPattern expands a product ID pattern like "7[789]" to actual hex values
+func expandProductIDPattern(vendor, prefix, pattern string) []string {
+	var ids []string
+
+	// Handle character class patterns like "7[789]"
+	charClassPattern := regexp.MustCompile(`^(\w)\[([^\]]+)\]$`)
+	if match := charClassPattern.FindStringSubmatch(pattern); len(match) >= 3 {
+		firstChar := match[1]
+		chars := match[2]
+		for _, c := range chars {
+			productID := fmt.Sprintf("0x%s%s%c", prefix, firstChar, c)
+			ids = append(ids, fmt.Sprintf("%s:%s", vendor, productID))
+		}
+		return ids
+	}
+
+	// Handle simple hex values like "80"
+	if len(pattern) == 2 {
+		productID := fmt.Sprintf("0x%s%s", prefix, pattern)
+		ids = append(ids, fmt.Sprintf("%s:%s", vendor, productID))
+		return ids
+	}
+
+	// Handle full 4-digit hex like "0562"
+	if len(pattern) == 4 {
+		productID := fmt.Sprintf("0x%s", pattern)
+		ids = append(ids, fmt.Sprintf("%s:%s", vendor, productID))
+		return ids
+	}
+
+	// For other complex patterns, skip for now
+	return ids
 }
 
 // NewClient creates a new smartmontools client
@@ -467,17 +592,17 @@ func (c *Client) GetSMARTInfo(devicePath string) (*SMARTInfo, error) {
 				if isUnknownUSBBridge(&smartInfo) {
 					_, hasCached := c.getCachedDeviceType(devicePath)
 					if !hasCached {
-						// First, check if this USB bridge is in our drivedb addendum
+						// First, check if this USB bridge is in our standard drivedb
 						usbBridgeID := extractUSBBridgeID(&smartInfo)
 						var deviceType string
 						if usbBridgeID != "" {
 							if knownType, ok := c.getCachedDeviceType(usbBridgeID); ok {
 								deviceType = knownType
-								slog.Info("Found USB bridge in drivedb addendum", "usbBridgeID", usbBridgeID, "deviceType", deviceType)
+								slog.Info("Found USB bridge in drivedb", "usbBridgeID", usbBridgeID, "deviceType", deviceType)
 							}
 						}
 
-						// If not in addendum, default to sat
+						// If not in drivedb, default to sat
 						if deviceType == "" {
 							deviceType = "sat"
 							slog.Info("Unknown USB bridge detected, retrying with -d sat", "devicePath", devicePath)
