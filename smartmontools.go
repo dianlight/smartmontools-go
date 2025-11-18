@@ -97,6 +97,7 @@ type SMARTInfo struct {
 	UserCapacity               *UserCapacity               `json:"user_capacity,omitempty"`
 	RotationRate               *int                        `json:"rotation_rate,omitempty"` // Rotation rate in RPM (0 for SSDs, >0 for HDDs, nil if not available or not applicable)
 	DiskType                   string                      `json:"-"`                       // Computed disk type: "SSD", "HDD", "NVMe", or "Unknown"
+	InStandby                  bool                        `json:"in_standby,omitempty"`    // True if device is in standby/sleep mode (ATA only)
 	SmartStatus                SmartStatus                 `json:"smart_status,omitempty"`
 	SmartSupport               *SmartSupport               `json:"smart_support,omitempty"`
 	AtaSmartData               *AtaSmartData               `json:"ata_smart_data,omitempty"`
@@ -440,16 +441,40 @@ func (c *Client) setCachedDeviceType(devicePath, deviceType string) {
 func (c *Client) GetSMARTInfo(devicePath string) (*SMARTInfo, error) {
 	// Check if we have a cached device type for this device
 	var args []string
+	var isATA bool
 	if cachedType, ok := c.getCachedDeviceType(devicePath); ok {
-		args = []string{"-d", cachedType, "-a", "-j", devicePath}
+		isATA = isATADevice(cachedType)
+		if isATA {
+			args = []string{"-d", cachedType, "--nocheck=standby", "-a", "-j", devicePath}
+		} else {
+			args = []string{"-d", cachedType, "-a", "-j", devicePath}
+		}
 	} else {
-		args = []string{"-a", "-j", devicePath}
+		// Assume ATA by default for --nocheck=standby
+		args = []string{"--nocheck=standby", "-a", "-j", devicePath}
+		isATA = true
 	}
 
 	cmd := c.commander.Command(c.smartctlPath, args...)
 	output, err := cmd.Output()
 	if err != nil {
 		// smartctl returns non-zero exit codes for various conditions
+		// Bit 1 (exit code 2) indicates device is in standby mode
+		if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 2 {
+			// Device is in standby mode
+			var smartInfo SMARTInfo
+			if len(output) > 0 && json.Unmarshal(output, &smartInfo) == nil {
+				smartInfo.InStandby = true
+				smartInfo.DiskType = determineDiskType(&smartInfo)
+				return &smartInfo, nil
+			}
+			// If no JSON output, return minimal info
+			return &SMARTInfo{
+				Device:    Device{Name: devicePath},
+				InStandby: true,
+			}, nil
+		}
+
 		// We still want to parse the output if available and it's valid JSON
 		if len(output) > 0 {
 			var smartInfo SMARTInfo
@@ -483,9 +508,28 @@ func (c *Client) GetSMARTInfo(devicePath string) (*SMARTInfo, error) {
 							slog.Info("Unknown USB bridge detected, retrying with -d sat", "devicePath", devicePath)
 						}
 
-						// Retry with the determined device type
-						retryCmd := c.commander.Command(c.smartctlPath, "-d", deviceType, "-a", "-j", devicePath)
+						// Retry with the determined device type and --nocheck=standby
+						retryArgs := []string{"-d", deviceType, "--nocheck=standby", "-a", "-j", devicePath}
+						retryCmd := c.commander.Command(c.smartctlPath, retryArgs...)
 						retryOutput, retryErr := retryCmd.Output()
+
+						// Check for standby mode on retry
+						if retryErr != nil {
+							if exitErr, ok := retryErr.(*exec.ExitError); ok && exitErr.ExitCode() == 2 {
+								var retrySmartInfo SMARTInfo
+								if len(retryOutput) > 0 && json.Unmarshal(retryOutput, &retrySmartInfo) == nil {
+									c.setCachedDeviceType(devicePath, deviceType)
+									retrySmartInfo.InStandby = true
+									retrySmartInfo.DiskType = determineDiskType(&retrySmartInfo)
+									return &retrySmartInfo, nil
+								}
+								return &SMARTInfo{
+									Device:    Device{Name: devicePath, Type: deviceType},
+									InStandby: true,
+								}, nil
+							}
+						}
+
 						if retryErr == nil || len(retryOutput) > 0 {
 							var retrySmartInfo SMARTInfo
 							if json.Unmarshal(retryOutput, &retrySmartInfo) == nil {
@@ -534,6 +578,15 @@ func (c *Client) GetSMARTInfo(devicePath string) (*SMARTInfo, error) {
 	return &smartInfo, nil
 }
 
+// isATADevice checks if a device type is ATA-based (ata, sat, sata, etc.)
+func isATADevice(deviceType string) bool {
+	if deviceType == "" {
+		return false
+	}
+	dt := strings.ToLower(deviceType)
+	return strings.Contains(dt, "ata") || strings.Contains(dt, "sat") || dt == "scsi"
+}
+
 // determineDiskType determines the type of disk based on available information
 func determineDiskType(info *SMARTInfo) string {
 	// Check for NVMe devices first
@@ -574,11 +627,28 @@ func determineDiskType(info *SMARTInfo) string {
 
 // CheckHealth checks if a device is healthy according to SMART
 func (c *Client) CheckHealth(devicePath string) (bool, error) {
-	cmd := c.commander.Command(c.smartctlPath, "-H", devicePath)
+	// Check if we have a cached device type and add --nocheck=standby for ATA devices
+	var args []string
+	if cachedType, ok := c.getCachedDeviceType(devicePath); ok {
+		if isATADevice(cachedType) {
+			args = []string{"-d", cachedType, "--nocheck=standby", "-H", devicePath}
+		} else {
+			args = []string{"-d", cachedType, "-H", devicePath}
+		}
+	} else {
+		// Assume ATA by default for --nocheck=standby
+		args = []string{"--nocheck=standby", "-H", devicePath}
+	}
+
+	cmd := c.commander.Command(c.smartctlPath, args...)
 	output, err := cmd.Output()
 	if err != nil {
-		// Exit code 0: healthy, non-zero may indicate issues
+		// Exit code 2: device in standby
 		if exitErr, ok := err.(*exec.ExitError); ok {
+			if exitErr.ExitCode() == 2 {
+				// Device is in standby mode, cannot check health without waking it
+				return false, fmt.Errorf("device is in standby mode")
+			}
 			// Parse output to determine health
 			outputStr := string(exitErr.Stderr)
 			if len(outputStr) == 0 {
@@ -595,9 +665,26 @@ func (c *Client) CheckHealth(devicePath string) (bool, error) {
 
 // GetDeviceInfo retrieves basic device information
 func (c *Client) GetDeviceInfo(devicePath string) (map[string]interface{}, error) {
-	cmd := c.commander.Command(c.smartctlPath, "-i", "-j", devicePath)
+	// Check if we have a cached device type and add --nocheck=standby for ATA devices
+	var args []string
+	if cachedType, ok := c.getCachedDeviceType(devicePath); ok {
+		if isATADevice(cachedType) {
+			args = []string{"-d", cachedType, "--nocheck=standby", "-i", "-j", devicePath}
+		} else {
+			args = []string{"-d", cachedType, "-i", "-j", devicePath}
+		}
+	} else {
+		// Assume ATA by default for --nocheck=standby
+		args = []string{"--nocheck=standby", "-i", "-j", devicePath}
+	}
+
+	cmd := c.commander.Command(c.smartctlPath, args...)
 	output, err := cmd.Output()
 	if err != nil {
+		// Exit code 2: device in standby
+		if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 2 {
+			return nil, fmt.Errorf("device is in standby mode")
+		}
 		return nil, fmt.Errorf("failed to get device info: %w", err)
 	}
 
@@ -784,9 +871,26 @@ func (c *Client) RunSelfTestWithProgress(ctx context.Context, devicePath string,
 
 // GetAvailableSelfTests returns the list of available self-test types and their durations for a device
 func (c *Client) GetAvailableSelfTests(devicePath string) (*SelfTestInfo, error) {
-	cmd := c.commander.Command(c.smartctlPath, "-c", "-j", devicePath)
+	// Check if we have a cached device type and add --nocheck=standby for ATA devices
+	var args []string
+	if cachedType, ok := c.getCachedDeviceType(devicePath); ok {
+		if isATADevice(cachedType) {
+			args = []string{"-d", cachedType, "--nocheck=standby", "-c", "-j", devicePath}
+		} else {
+			args = []string{"-d", cachedType, "-c", "-j", devicePath}
+		}
+	} else {
+		// Assume ATA by default for --nocheck=standby
+		args = []string{"--nocheck=standby", "-c", "-j", devicePath}
+	}
+
+	cmd := c.commander.Command(c.smartctlPath, args...)
 	output, err := cmd.Output()
 	if err != nil {
+		// Exit code 2: device in standby
+		if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 2 {
+			return nil, fmt.Errorf("device is in standby mode")
+		}
 		return nil, fmt.Errorf("failed to get capabilities: %w", err)
 	}
 
