@@ -7094,6 +7094,62 @@ const drive_settings builtin_knowndrives[] = {
     "",
     "-d sat"
   },
+  // Custom additions from smartmontools-go community reports
+  // (entries not present in upstream drivedb.h)
+  { "USB: ; JMicron", // Cheap Chinese USB to SATA adapter - smartmontools issue #330
+    "0x152d:0xa580",
+    "",
+    "",
+    "-d sat"
+  },
+  { "USB: ; Realtek", // Realtek USB Bridge - smartmontools issue #345
+    "0x0bda:0x0309",
+    "",
+    "",
+    "-d sat"
+  },
+  { "USB: ; JMicron", // Fantec AD-U3S Bridge - smartmontools issue #1797
+    "0x152d:0xb567",
+    "",
+    "",
+    "-d sat"
+  },
+  { "USB: ; ASMedia",
+    "0x174c:0x55aa",
+    "",
+    "",
+    "-d sat"
+  },
+  { "USB: ; Realtek",
+    "0x0bda:0x0316",
+    "",
+    "",
+    "-d sat"
+  },
+  { "USB: ; Realtek",
+    "0x0bda:0x0326",
+    "",
+    "",
+    "-d sat"
+  },
+  { "USB: ; ASMedia",
+    "0x174c:0x5106",
+    "",
+    "",
+    "-d sat"
+  },
+  { "USB: ; ASMedia",
+    "0x174c:0x1153",
+    "",
+    "",
+    "-d sat"
+  },
+  { "USB: ; VIA",
+    "0x2109:0x0715",
+    "",
+    "",
+    "-d sat"
+  },
 /*
 }; // builtin_knowndrives[]
  */
