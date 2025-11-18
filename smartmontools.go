@@ -6,9 +6,7 @@
 package smartmontools
 
 import (
-	"bufio"
 	"context"
-	_ "embed"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -18,9 +16,6 @@ import (
 	"sync"
 	"time"
 )
-
-//go:embed drivedb_addendum.txt
-var drivedbAddendum string
 
 // SMART attribute IDs for SSD detection
 const (
@@ -287,39 +282,6 @@ type Client struct {
 	deviceTypeCacheMux sync.RWMutex      // Protects deviceTypeCache
 }
 
-// loadDrivedbAddendum parses the embedded drivedb_addendum.txt file and returns
-// a map of device identifiers to device types. The file format is:
-//
-//	usb:<vendor_id>:<product_id> <device_type>
-//
-// Lines starting with # are comments and empty lines are ignored.
-func loadDrivedbAddendum() map[string]string {
-	cache := make(map[string]string)
-	scanner := bufio.NewScanner(strings.NewReader(drivedbAddendum))
-
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-
-		// Skip empty lines and comments
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-
-		// Parse line: "usb:0x152d:0x578e sat"
-		parts := strings.Fields(line)
-		if len(parts) < 2 {
-			continue
-		}
-
-		deviceID := parts[0]
-		deviceType := parts[1]
-		cache[deviceID] = deviceType
-	}
-
-	slog.Debug("Loaded drivedb addendum", "entries", len(cache))
-	return cache
-}
-
 // NewClient creates a new smartmontools client
 func NewClient() (SmartClient, error) {
 	// Try to find smartctl in PATH
@@ -386,39 +348,6 @@ func (c *Client) ScanDevices() ([]Device, error) {
 	}
 
 	return devices, nil
-}
-
-// isUnknownUSBBridge checks if the smartctl messages contain an "Unknown USB bridge" error
-func isUnknownUSBBridge(smartInfo *SMARTInfo) bool {
-	if smartInfo == nil || smartInfo.Smartctl == nil {
-		return false
-	}
-	for _, msg := range smartInfo.Smartctl.Messages {
-		if strings.Contains(msg.String, "Unknown USB bridge") {
-			return true
-		}
-	}
-	return false
-}
-
-// extractUSBBridgeID extracts the USB vendor:product ID from an "Unknown USB bridge" error message.
-// Returns the ID in the format "usb:0xVVVV:0xPPPP" or an empty string if not found.
-func extractUSBBridgeID(smartInfo *SMARTInfo) string {
-	if smartInfo == nil || smartInfo.Smartctl == nil {
-		return ""
-	}
-
-	// Pattern to match: "Unknown USB bridge [0x152d:0x578e ..."
-	re := regexp.MustCompile(`Unknown USB bridge \[(0x[0-9a-fA-F]+):(0x[0-9a-fA-F]+)`)
-
-	for _, msg := range smartInfo.Smartctl.Messages {
-		if matches := re.FindStringSubmatch(msg.String); len(matches) >= 3 {
-			vendorID := strings.ToLower(matches[1])
-			productID := strings.ToLower(matches[2])
-			return fmt.Sprintf("usb:%s:%s", vendorID, productID)
-		}
-	}
-	return ""
 }
 
 // getCachedDeviceType retrieves a cached device type for the given device path
@@ -492,17 +421,17 @@ func (c *Client) GetSMARTInfo(devicePath string) (*SMARTInfo, error) {
 				if isUnknownUSBBridge(&smartInfo) {
 					_, hasCached := c.getCachedDeviceType(devicePath)
 					if !hasCached {
-						// First, check if this USB bridge is in our drivedb addendum
+						// First, check if this USB bridge is in our standard drivedb
 						usbBridgeID := extractUSBBridgeID(&smartInfo)
 						var deviceType string
 						if usbBridgeID != "" {
 							if knownType, ok := c.getCachedDeviceType(usbBridgeID); ok {
 								deviceType = knownType
-								slog.Info("Found USB bridge in drivedb addendum", "usbBridgeID", usbBridgeID, "deviceType", deviceType)
+								slog.Info("Found USB bridge in drivedb", "usbBridgeID", usbBridgeID, "deviceType", deviceType)
 							}
 						}
 
-						// If not in addendum, default to sat
+						// If not in drivedb, default to sat
 						if deviceType == "" {
 							deviceType = "sat"
 							slog.Info("Unknown USB bridge detected, retrying with -d sat", "devicePath", devicePath)

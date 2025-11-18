@@ -2001,12 +2001,13 @@ func TestExtractUSBBridgeID(t *testing.T) {
 func TestLoadDrivedbAddendum(t *testing.T) {
 	cache := loadDrivedbAddendum()
 
-	// Check that some known entries are loaded
+	// Check that some known entries from standard drivedb.h are loaded
+	// Note: These are USB entries from the official smartmontools drivedb.h
 	expectedEntries := map[string]string{
-		"usb:0x152d:0x578e": "sat",
-		"usb:0x152d:0xa580": "sat",
-		"usb:0x0bda:0x9201": "sat",
-		"usb:0x059f:0x1029": "sat",
+		"usb:0x152d:0x0578": "sat", // JMicron (expanded from regex pattern)
+		"usb:0x152d:0x0562": "sat", // JMicron JMS562
+		"usb:0x0bda:0x9201": "sat", // Realtek
+		"usb:0x059f:0x1029": "sat", // LaCie
 	}
 
 	for key, expectedValue := range expectedEntries {
@@ -2018,8 +2019,9 @@ func TestLoadDrivedbAddendum(t *testing.T) {
 	}
 
 	// Check that we have a reasonable number of entries
-	if len(cache) < 10 {
-		t.Errorf("Expected at least 10 entries in drivedb addendum, got %d", len(cache))
+	// The standard drivedb.h should have many more entries than the old addendum
+	if len(cache) < 100 {
+		t.Errorf("Expected at least 100 entries from drivedb.h, got %d", len(cache))
 	}
 }
 
