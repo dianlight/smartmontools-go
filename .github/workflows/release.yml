@@ -48,7 +48,7 @@ jobs:
           tag_name: ${{ github.ref_name }}
           name: ${{ github.ref_name }}
           prerelease: ${{ contains(github.ref, '-') }}
-          draft: true
+          draft: false
           body: ${{ steps.release_notes.outputs.notes }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
