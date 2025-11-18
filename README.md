@@ -144,7 +144,7 @@ client := smartmontools.NewClientWithPath("/usr/local/sbin/smartctl")
 
 The library includes automatic support for USB storage devices that use unknown USB bridges. When smartctl reports an "Unknown USB bridge" error, the library:
 
-1. **Checks embedded database**: Looks up the USB vendor:product ID in the embedded `drivedb_addendum.txt` file
+1. **Checks embedded database**: Looks up the USB vendor:product ID in the embedded standard `drivedb.h` from smartmontools
 2. **Automatic fallback**: If found, uses the known device type; otherwise falls back to `-d sat`
 3. **Caches results**: Remembers successful device types for faster future access
 
@@ -161,7 +161,7 @@ fmt.Printf("Model: %s\n", info.ModelName)
 fmt.Printf("Health: %v\n", info.SmartStatus.Passed)
 ```
 
-The embedded database includes common USB-SATA bridges from community reports and smartmontools issues. See [docs/drivedb_addendum.md](./docs/drivedb_addendum.md) for details.
+The embedded database is the official smartmontools `drivedb.h` which contains USB bridge definitions from the upstream project. See [docs/drivedb.md](./docs/drivedb.md) for details.
 
 ## API Reference
 

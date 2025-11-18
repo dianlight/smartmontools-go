@@ -2004,10 +2004,10 @@ func TestLoadDrivedbAddendum(t *testing.T) {
 	// Check that some known entries from standard drivedb.h are loaded
 	// Note: These are USB entries from the official smartmontools drivedb.h
 	expectedEntries := map[string]string{
-		"usb:0x152d:0x0578": "sat",  // JMicron (expanded from regex pattern)
-		"usb:0x152d:0x0562": "sat",  // JMicron JMS562
-		"usb:0x0bda:0x9201": "sat",  // Realtek
-		"usb:0x059f:0x1029": "sat",  // LaCie
+		"usb:0x152d:0x0578": "sat", // JMicron (expanded from regex pattern)
+		"usb:0x152d:0x0562": "sat", // JMicron JMS562
+		"usb:0x0bda:0x9201": "sat", // Realtek
+		"usb:0x059f:0x1029": "sat", // LaCie
 	}
 
 	for key, expectedValue := range expectedEntries {

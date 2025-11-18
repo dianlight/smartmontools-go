@@ -380,9 +380,7 @@ func extractUSBIDs(modelregexp string) []string {
 	// Pattern to match USB IDs with exact hex: 0xVVVV:0xPPPP
 	exactPattern := regexp.MustCompile(`(0x[0-9a-fA-F]{4}:0x[0-9a-fA-F]{4})`)
 	matches := exactPattern.FindAllString(modelregexp, -1)
-	for _, match := range matches {
-		ids = append(ids, match)
-	}
+	ids = append(ids, matches...)
 
 	// Handle common regex patterns in product ID
 	// Pattern like "0x152d:0x05(7[789]|80)" -> expand to 0x0577, 0x0578, 0x0579, 0x0580
