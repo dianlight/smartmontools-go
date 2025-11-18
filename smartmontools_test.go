@@ -886,7 +886,7 @@ func TestGetSMARTInfo(t *testing.T) {
 }`
 	commander := &mockCommander{
 		cmds: map[string]*mockCmd{
-			"/usr/sbin/smartctl -a -j /dev/sda": {output: []byte(mockJSON)},
+			"/usr/sbin/smartctl --nocheck=standby -a -j /dev/sda": {output: []byte(mockJSON)},
 		},
 	}
 	client := NewClientWithCommander("/usr/sbin/smartctl", commander)
@@ -968,7 +968,7 @@ func TestGetSMARTInfoUnsupported(t *testing.T) {
 }`
 	commander := &mockCommander{
 		cmds: map[string]*mockCmd{
-			"/usr/sbin/smartctl -a -j /dev/sda": {output: []byte(mockJSON), err: errors.New("SMART Not Supported")},
+			"/usr/sbin/smartctl --nocheck=standby -a -j /dev/sda": {output: []byte(mockJSON), err: errors.New("SMART Not Supported")},
 		},
 	}
 	client := NewClientWithCommander("/usr/sbin/smartctl", commander)
@@ -1017,7 +1017,7 @@ func TestGetSMARTInfoExitError(t *testing.T) {
 	}`
 	commander := &mockCommander{
 		cmds: map[string]*mockCmd{
-			"/usr/sbin/smartctl -a -j /dev/sda": {
+			"/usr/sbin/smartctl --nocheck=standby -a -j /dev/sda": {
 				output: []byte(mockJSON),
 				err:    &exec.ExitError{Stderr: []byte("")},
 			},
@@ -1050,7 +1050,7 @@ func TestGetSMARTInfoExitError(t *testing.T) {
 func TestCheckHealth(t *testing.T) {
 	commander := &mockCommander{
 		cmds: map[string]*mockCmd{
-			"/usr/sbin/smartctl -H /dev/sda": {output: []byte("SMART overall-health self-assessment test result: PASSED")},
+			"/usr/sbin/smartctl --nocheck=standby -H /dev/sda": {output: []byte("SMART overall-health self-assessment test result: PASSED")},
 		},
 	}
 	client := NewClientWithCommander("/usr/sbin/smartctl", commander)
@@ -1068,7 +1068,7 @@ func TestCheckHealth(t *testing.T) {
 func TestCheckHealthFailed(t *testing.T) {
 	commander := &mockCommander{
 		cmds: map[string]*mockCmd{
-			"/usr/sbin/smartctl -H /dev/sda": {output: []byte("SMART overall-health self-assessment test result: FAILED")},
+			"/usr/sbin/smartctl --nocheck=standby -H /dev/sda": {output: []byte("SMART overall-health self-assessment test result: FAILED")},
 		},
 	}
 	client := NewClientWithCommander("/usr/sbin/smartctl", commander)
@@ -1086,7 +1086,7 @@ func TestCheckHealthFailed(t *testing.T) {
 func TestCheckHealthExitError(t *testing.T) {
 	commander := &mockCommander{
 		cmds: map[string]*mockCmd{
-			"/usr/sbin/smartctl -H /dev/sda": {
+			"/usr/sbin/smartctl --nocheck=standby -H /dev/sda": {
 				output: []byte("some output"),
 				err:    &exec.ExitError{Stderr: []byte("SMART overall-health self-assessment test result: PASSED")},
 			},
@@ -1112,7 +1112,7 @@ func TestGetDeviceInfo(t *testing.T) {
 	}`
 	commander := &mockCommander{
 		cmds: map[string]*mockCmd{
-			"/usr/sbin/smartctl -i -j /dev/sda": {output: []byte(mockJSON)},
+			"/usr/sbin/smartctl --nocheck=standby -i -j /dev/sda": {output: []byte(mockJSON)},
 		},
 	}
 	client := NewClientWithCommander("/usr/sbin/smartctl", commander)
@@ -1193,9 +1193,9 @@ func TestRunSelfTestWithProgress(t *testing.T) {
 
 	commander := &mockCommander{
 		cmds: map[string]*mockCmd{
-			"/usr/sbin/smartctl -a -j /dev/sda":    {output: []byte(mockJSON)},
-			"/usr/sbin/smartctl -c -j /dev/sda":    {output: []byte(mockCapabilitiesJSON)},
-			"/usr/sbin/smartctl -t short /dev/sda": {},
+			"/usr/sbin/smartctl --nocheck=standby -a -j /dev/sda": {output: []byte(mockJSON)},
+			"/usr/sbin/smartctl --nocheck=standby -c -j /dev/sda": {output: []byte(mockCapabilitiesJSON)},
+			"/usr/sbin/smartctl -t short /dev/sda":                {},
 		},
 	}
 
@@ -1244,7 +1244,7 @@ func TestGetAvailableSelfTestsATA(t *testing.T) {
 	}`
 	commander := &mockCommander{
 		cmds: map[string]*mockCmd{
-			"/usr/sbin/smartctl -c -j /dev/sda": {output: []byte(mockJSON)},
+			"/usr/sbin/smartctl --nocheck=standby -c -j /dev/sda": {output: []byte(mockJSON)},
 		},
 	}
 	client := NewClientWithCommander("/usr/sbin/smartctl", commander)
@@ -1272,7 +1272,7 @@ func TestGetAvailableSelfTestsATANoCapabilities(t *testing.T) {
 	}`
 	commander := &mockCommander{
 		cmds: map[string]*mockCmd{
-			"/usr/sbin/smartctl -c -j /dev/sda": {output: []byte(mockJSON)},
+			"/usr/sbin/smartctl --nocheck=standby -c -j /dev/sda": {output: []byte(mockJSON)},
 		},
 	}
 	client := NewClientWithCommander("/usr/sbin/smartctl", commander)
@@ -1295,7 +1295,7 @@ func TestGetAvailableSelfTestsNVMe(t *testing.T) {
 	}`
 	commander := &mockCommander{
 		cmds: map[string]*mockCmd{
-			"/usr/sbin/smartctl -c -j /dev/nvme0n1": {output: []byte(mockJSON)},
+			"/usr/sbin/smartctl --nocheck=standby -c -j /dev/nvme0n1": {output: []byte(mockJSON)},
 		},
 	}
 	client := NewClientWithCommander("/usr/sbin/smartctl", commander)
@@ -1319,7 +1319,7 @@ func TestGetAvailableSelfTestsNVMeNoSupport(t *testing.T) {
 	}`
 	commander := &mockCommander{
 		cmds: map[string]*mockCmd{
-			"/usr/sbin/smartctl -c -j /dev/nvme0n1": {output: []byte(mockJSON)},
+			"/usr/sbin/smartctl --nocheck=standby -c -j /dev/nvme0n1": {output: []byte(mockJSON)},
 		},
 	}
 	client := NewClientWithCommander("/usr/sbin/smartctl", commander)
@@ -1337,7 +1337,7 @@ func TestGetAvailableSelfTestsNVMeNoSupport(t *testing.T) {
 func TestGetAvailableSelfTestsError(t *testing.T) {
 	commander := &mockCommander{
 		cmds: map[string]*mockCmd{
-			"/usr/sbin/smartctl -c -j /dev/sda": {err: errors.New("command failed")},
+			"/usr/sbin/smartctl --nocheck=standby -c -j /dev/sda": {err: errors.New("command failed")},
 		},
 	}
 	client := NewClientWithCommander("/usr/sbin/smartctl", commander)
@@ -1359,7 +1359,7 @@ func TestIsSMARTSupportedATA(t *testing.T) {
 	}`
 	commander := &mockCommander{
 		cmds: map[string]*mockCmd{
-			"/usr/sbin/smartctl -a -j /dev/sda": {output: []byte(mockJSON)},
+			"/usr/sbin/smartctl --nocheck=standby -a -j /dev/sda": {output: []byte(mockJSON)},
 		},
 	}
 	client := NewClientWithCommander("/usr/sbin/smartctl", commander)
@@ -1387,7 +1387,7 @@ func TestIsSMARTSupportedNVMe(t *testing.T) {
 	}`
 	commander := &mockCommander{
 		cmds: map[string]*mockCmd{
-			"/usr/sbin/smartctl -a -j /dev/nvme0n1": {output: []byte(mockJSON)},
+			"/usr/sbin/smartctl --nocheck=standby -a -j /dev/nvme0n1": {output: []byte(mockJSON)},
 		},
 	}
 	client := NewClientWithCommander("/usr/sbin/smartctl", commander)
@@ -1416,7 +1416,7 @@ func TestIsSMARTSupportedNVMeWithSmartSupport(t *testing.T) {
 	}`
 	commander := &mockCommander{
 		cmds: map[string]*mockCmd{
-			"/usr/sbin/smartctl -a -j /dev/nvme0n1": {output: []byte(mockJSON)},
+			"/usr/sbin/smartctl --nocheck=standby -a -j /dev/nvme0n1": {output: []byte(mockJSON)},
 		},
 	}
 	client := NewClientWithCommander("/usr/sbin/smartctl", commander)
@@ -1441,7 +1441,7 @@ func TestIsSMARTSupportedNotSupported(t *testing.T) {
 	}`
 	commander := &mockCommander{
 		cmds: map[string]*mockCmd{
-			"/usr/sbin/smartctl -a -j /dev/sda": {output: []byte(mockJSON)},
+			"/usr/sbin/smartctl --nocheck=standby -a -j /dev/sda": {output: []byte(mockJSON)},
 		},
 	}
 	client := NewClientWithCommander("/usr/sbin/smartctl", commander)
@@ -1463,7 +1463,7 @@ func TestIsSMARTSupportedNotSupported(t *testing.T) {
 func TestIsSMARTSupportedError(t *testing.T) {
 	commander := &mockCommander{
 		cmds: map[string]*mockCmd{
-			"/usr/sbin/smartctl -a -j /dev/sda": {err: errors.New("command failed")},
+			"/usr/sbin/smartctl --nocheck=standby -a -j /dev/sda": {err: errors.New("command failed")},
 		},
 	}
 	client := NewClientWithCommander("/usr/sbin/smartctl", commander)
@@ -1568,7 +1568,7 @@ func TestDiskTypeDetectionSSD(t *testing.T) {
 }`
 	commander := &mockCommander{
 		cmds: map[string]*mockCmd{
-			"/usr/sbin/smartctl -a -j /dev/sda": {output: []byte(mockJSON)},
+			"/usr/sbin/smartctl --nocheck=standby -a -j /dev/sda": {output: []byte(mockJSON)},
 		},
 	}
 	client := NewClientWithCommander("/usr/sbin/smartctl", commander)
@@ -1599,7 +1599,7 @@ func TestDiskTypeDetectionHDD(t *testing.T) {
 }`
 	commander := &mockCommander{
 		cmds: map[string]*mockCmd{
-			"/usr/sbin/smartctl -a -j /dev/sdb": {output: []byte(mockJSON)},
+			"/usr/sbin/smartctl --nocheck=standby -a -j /dev/sdb": {output: []byte(mockJSON)},
 		},
 	}
 	client := NewClientWithCommander("/usr/sbin/smartctl", commander)
@@ -1632,7 +1632,7 @@ func TestDiskTypeDetectionNVMe(t *testing.T) {
 }`
 	commander := &mockCommander{
 		cmds: map[string]*mockCmd{
-			"/usr/sbin/smartctl -a -j /dev/nvme0n1": {output: []byte(mockJSON)},
+			"/usr/sbin/smartctl --nocheck=standby -a -j /dev/nvme0n1": {output: []byte(mockJSON)},
 		},
 	}
 	client := NewClientWithCommander("/usr/sbin/smartctl", commander)
@@ -1661,7 +1661,7 @@ func TestDiskTypeDetectionUnknown(t *testing.T) {
 }`
 	commander := &mockCommander{
 		cmds: map[string]*mockCmd{
-			"/usr/sbin/smartctl -a -j /dev/sdc": {output: []byte(mockJSON)},
+			"/usr/sbin/smartctl --nocheck=standby -a -j /dev/sdc": {output: []byte(mockJSON)},
 		},
 	}
 	client := NewClientWithCommander("/usr/sbin/smartctl", commander)
@@ -1694,7 +1694,7 @@ func TestDiskTypeDetectionSSDWithAttributes(t *testing.T) {
 }`
 	commander := &mockCommander{
 		cmds: map[string]*mockCmd{
-			"/usr/sbin/smartctl -a -j /dev/sda": {output: []byte(mockJSON)},
+			"/usr/sbin/smartctl --nocheck=standby -a -j /dev/sda": {output: []byte(mockJSON)},
 		},
 	}
 	client := NewClientWithCommander("/usr/sbin/smartctl", commander)
@@ -1743,11 +1743,11 @@ func TestGetSMARTInfoUnknownUSBBridgeFallback(t *testing.T) {
 
 	commander := &mockCommander{
 		cmds: map[string]*mockCmd{
-			"/usr/sbin/smartctl -a -j /dev/usb0": {
+			"/usr/sbin/smartctl --nocheck=standby -a -j /dev/usb0": {
 				output: []byte(mockJSONWithError),
 				err:    errors.New("exit status 1"),
 			},
-			"/usr/sbin/smartctl -d sat -a -j /dev/usb0": {
+			"/usr/sbin/smartctl -d sat --nocheck=standby -a -j /dev/usb0": {
 				output: []byte(mockJSONWithSat),
 			},
 		},
@@ -1798,7 +1798,7 @@ func TestGetSMARTInfoUnknownUSBBridgeFallbackAlreadyCached(t *testing.T) {
 
 	commander := &mockCommander{
 		cmds: map[string]*mockCmd{
-			"/usr/sbin/smartctl -d sat -a -j /dev/usb0": {
+			"/usr/sbin/smartctl -d sat --nocheck=standby -a -j /dev/usb0": {
 				output: []byte(mockJSONWithSat),
 			},
 		},
@@ -1842,11 +1842,11 @@ func TestGetSMARTInfoUnknownUSBBridgeFallbackFailed(t *testing.T) {
 
 	commander := &mockCommander{
 		cmds: map[string]*mockCmd{
-			"/usr/sbin/smartctl -a -j /dev/usb0": {
+			"/usr/sbin/smartctl --nocheck=standby -a -j /dev/usb0": {
 				output: []byte(mockJSONWithError),
 				err:    errors.New("exit status 1"),
 			},
-			"/usr/sbin/smartctl -d sat -a -j /dev/usb0": {
+			"/usr/sbin/smartctl -d sat --nocheck=standby -a -j /dev/usb0": {
 				err: errors.New("sat failed"),
 			},
 		},
@@ -2081,11 +2081,11 @@ func TestGetSMARTInfoWithKnownUSBBridge(t *testing.T) {
 
 	commander := &mockCommander{
 		cmds: map[string]*mockCmd{
-			"/usr/sbin/smartctl -a -j /dev/usb0": {
+			"/usr/sbin/smartctl --nocheck=standby -a -j /dev/usb0": {
 				output: []byte(mockJSONWithError),
 				err:    errors.New("exit status 1"),
 			},
-			"/usr/sbin/smartctl -d sat -a -j /dev/usb0": {
+			"/usr/sbin/smartctl -d sat --nocheck=standby -a -j /dev/usb0": {
 				output: []byte(mockJSONWithSat),
 			},
 		},
