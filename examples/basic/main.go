@@ -32,7 +32,7 @@ func main() {
 
 	// Scan for available devices
 	fmt.Println(blue("Scanning for devices..."))
-	devices, err := client.ScanDevices()
+	devices, err := client.ScanDevices(context.Background())
 	if err != nil {
 		fmt.Println(yellow(fmt.Sprintf("Warning: Failed to scan devices: %v", err)))
 		fmt.Println("Attempting to use /dev/sda as fallback...")
@@ -56,7 +56,7 @@ func main() {
 
 	// Check health status
 	fmt.Println(blue("Checking device health..."))
-	healthy, err := client.CheckHealth(devicePath)
+	healthy, err := client.CheckHealth(context.Background(), devicePath)
 	if err != nil {
 		fmt.Println(yellow(fmt.Sprintf("Warning: Failed to check health: %v", err)))
 	} else {
@@ -69,7 +69,7 @@ func main() {
 	fmt.Println()
 	// Check if SMART is supported
 	fmt.Println(blue("Checking if SMART is supported..."))
-	smartSupported, err := client.IsSMARTSupported(devicePath)
+	smartSupported, err := client.IsSMARTSupported(context.Background(), devicePath)
 	if err != nil {
 		fmt.Println(yellow(fmt.Sprintf("Warning: Failed to check SMART support: %v", err)))
 	} else {
@@ -87,7 +87,7 @@ func main() {
 	fmt.Println()
 	// Get basic device information
 	fmt.Println(blue("Getting device information..."))
-	info, err := client.GetDeviceInfo(devicePath)
+	info, err := client.GetDeviceInfo(context.Background(), devicePath)
 	if err != nil {
 		fmt.Println(yellow(fmt.Sprintf("Warning: Failed to get device info: %v", err)))
 	} else {
@@ -106,7 +106,7 @@ func main() {
 
 	// Get full SMART information
 	fmt.Println(blue("Getting SMART information..."))
-	smartInfo, err := client.GetSMARTInfo(devicePath)
+	smartInfo, err := client.GetSMARTInfo(context.Background(), devicePath)
 	if err != nil {
 		fmt.Println(yellow(fmt.Sprintf("Warning: Failed to get SMART info: %v", err)))
 	} else {
@@ -153,7 +153,7 @@ func main() {
 
 	// Get available self-tests
 	fmt.Println(blue("Getting available self-tests..."))
-	availableTests, err := client.GetAvailableSelfTests(devicePath)
+	availableTests, err := client.GetAvailableSelfTests(context.Background(), devicePath)
 	if err != nil {
 		fmt.Println(yellow(fmt.Sprintf("Warning: Failed to get available tests: %v", err)))
 	} else {

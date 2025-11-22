@@ -1,6 +1,7 @@
 package smartmontools
 
 import (
+	"context"
 	"testing"
 )
 
@@ -27,9 +28,9 @@ func TestGetSMARTInfoWithNoCheckStandby(t *testing.T) {
 			},
 		},
 	}
-	client := NewClientWithCommander("/usr/sbin/smartctl", commander)
+	client, _ := NewClient(WithSmartctlPath("/usr/sbin/smartctl"), WithCommander(commander))
 
-	info, err := client.GetSMARTInfo("/dev/sda")
+	info, err := client.GetSMARTInfo(context.Background(), "/dev/sda")
 
 	if err != nil {
 		t.Errorf("Expected no error, got %v", err)
@@ -58,9 +59,9 @@ func TestCheckHealthWithNoCheckStandby(t *testing.T) {
 			},
 		},
 	}
-	client := NewClientWithCommander("/usr/sbin/smartctl", commander)
+	client, _ := NewClient(WithSmartctlPath("/usr/sbin/smartctl"), WithCommander(commander))
 
-	healthy, err := client.CheckHealth("/dev/sda")
+	healthy, err := client.CheckHealth(context.Background(), "/dev/sda")
 	if err != nil {
 		t.Errorf("Expected no error, got %v", err)
 	}
@@ -85,9 +86,9 @@ func TestGetDeviceInfoWithNoCheckStandby(t *testing.T) {
 			},
 		},
 	}
-	client := NewClientWithCommander("/usr/sbin/smartctl", commander)
+	client, _ := NewClient(WithSmartctlPath("/usr/sbin/smartctl"), WithCommander(commander))
 
-	info, err := client.GetDeviceInfo("/dev/sda")
+	info, err := client.GetDeviceInfo(context.Background(), "/dev/sda")
 	if err != nil {
 		t.Errorf("Expected no error, got %v", err)
 	}
@@ -114,9 +115,9 @@ func TestGetAvailableSelfTestsWithNoCheckStandby(t *testing.T) {
 			},
 		},
 	}
-	client := NewClientWithCommander("/usr/sbin/smartctl", commander)
+	client, _ := NewClient(WithSmartctlPath("/usr/sbin/smartctl"), WithCommander(commander))
 
-	info, err := client.GetAvailableSelfTests("/dev/sda")
+	info, err := client.GetAvailableSelfTests(context.Background(), "/dev/sda")
 	if err != nil {
 		t.Errorf("Expected no error, got %v", err)
 	}
@@ -167,13 +168,13 @@ func TestGetSMARTInfoWithCachedATADeviceType(t *testing.T) {
 			"/usr/sbin/smartctl -d sat --nocheck=standby -a -j /dev/sda": {output: []byte(mockJSON)},
 		},
 	}
-	client := NewClientWithCommander("/usr/sbin/smartctl", commander)
+	client, _ := NewClient(WithSmartctlPath("/usr/sbin/smartctl"), WithCommander(commander))
 
 	// Pre-cache the device type
 	c := client.(*Client)
 	c.setCachedDeviceType("/dev/sda", "sat")
 
-	info, err := client.GetSMARTInfo("/dev/sda")
+	info, err := client.GetSMARTInfo(context.Background(), "/dev/sda")
 	if err != nil {
 		t.Errorf("Expected no error, got %v", err)
 	}
@@ -200,13 +201,13 @@ func TestGetSMARTInfoWithCachedNVMeDeviceType(t *testing.T) {
 			"/usr/sbin/smartctl -d nvme -a -j /dev/nvme0n1": {output: []byte(mockJSON)},
 		},
 	}
-	client := NewClientWithCommander("/usr/sbin/smartctl", commander)
+	client, _ := NewClient(WithSmartctlPath("/usr/sbin/smartctl"), WithCommander(commander))
 
 	// Pre-cache the device type
 	c := client.(*Client)
 	c.setCachedDeviceType("/dev/nvme0n1", "nvme")
 
-	info, err := client.GetSMARTInfo("/dev/nvme0n1")
+	info, err := client.GetSMARTInfo(context.Background(), "/dev/nvme0n1")
 	if err != nil {
 		t.Errorf("Expected no error, got %v", err)
 	}
