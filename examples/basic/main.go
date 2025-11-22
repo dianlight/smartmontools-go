@@ -3,12 +3,12 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
 	"os"
 	"strings"
 	"time"
 
 	"github.com/dianlight/smartmontools-go"
+	"github.com/dianlight/tlog"
 	"github.com/fatih/color"
 )
 
@@ -16,9 +16,18 @@ func main() {
 	// Create a new smartmontools client
 	client, err := smartmontools.NewClient()
 	if err != nil {
-		log.Fatalf("Failed to create client: %v", err)
+		// Use tlog for fatal error (application will exit)
+		tlog.Fatal("Failed to create smartmontools client", "error", err)
 	}
-	//slog.SetLogLoggerLevel(slog.LevelDebug)
+
+	// Example: set log level to INFO (default is INFO if not set)
+	if err := tlog.SetLevelFromString("info"); err != nil {
+		// Fall back silently if configuration fails
+		tlog.Warn("Unable to set log level", "error", err)
+	}
+
+	// Initial informational log
+	tlog.Info("Starting smartmontools basic example")
 
 	// Define color functions
 	green := color.New(color.FgGreen).SprintFunc()

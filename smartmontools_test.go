@@ -3,10 +3,11 @@ package smartmontools
 import (
 	"context"
 	"errors"
-	"log/slog"
 	"os/exec"
 	"testing"
 	"time"
+
+	"github.com/dianlight/tlog"
 )
 
 // mockCmd implements Cmd interface for testing
@@ -28,7 +29,7 @@ type mockCommander struct {
 	cmds map[string]*mockCmd
 }
 
-func (m *mockCommander) Command(ctx context.Context, logger *slog.Logger, name string, arg ...string) Cmd {
+func (m *mockCommander) Command(ctx context.Context, logger *tlog.Logger, name string, arg ...string) Cmd {
 	key := name
 	for _, a := range arg {
 		key += " " + a
@@ -2108,8 +2109,9 @@ func TestGetSMARTInfoWithKnownUSBBridge(t *testing.T) {
 		smartctlPath:    "/usr/sbin/smartctl",
 		commander:       commander,
 		deviceTypeCache: loadDrivedbAddendum(),
-		logHandler:      slog.Default(),
-		defaultCtx:      context.Background(),
+		// Use NewLoggerWithLevel to obtain *tlog.Logger (tlog.WithLevel returns *slog.Logger)
+		logHandler: tlog.NewLoggerWithLevel(tlog.LevelDebug),
+		defaultCtx: context.Background(),
 	}
 
 	// First call should detect USB bridge in addendum and use sat
