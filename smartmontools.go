@@ -9,6 +9,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os/exec"
 	"regexp"
 	"strings"
@@ -35,10 +36,17 @@ func WithSmartctlPath(path string) ClientOption {
 	}
 }
 
-// WithLogHandler sets a custom log handler for the client
-func WithLogHandler(handler *tlog.Logger) ClientOption {
+// WithLogHandler sets a custom slog.Logger for the client.
+func WithLogHandler(logger *slog.Logger) ClientOption {
 	return func(c *Client) {
-		c.logHandler = handler
+		c.logHandler = logger
+	}
+}
+
+// WithTLogHandler sets a custom tlog.Logger for the client.
+func WithTLogHandler(logger *tlog.Logger) ClientOption {
+	return func(c *Client) {
+		c.logHandler = logger
 	}
 }
 
@@ -56,9 +64,22 @@ func WithContext(ctx context.Context) ClientOption {
 	}
 }
 
+// logAdapter captures the logging methods used by this package.
+type logAdapter interface {
+	Debug(msg string, args ...any)
+	DebugContext(ctx context.Context, msg string, args ...any)
+	InfoContext(ctx context.Context, msg string, args ...any)
+	WarnContext(ctx context.Context, msg string, args ...any)
+}
+
+var (
+	_ logAdapter = (*tlog.Logger)(nil)
+	_ logAdapter = (*slog.Logger)(nil)
+)
+
 // Commander interface for executing commands
 type Commander interface {
-	Command(ctx context.Context, logger *tlog.Logger, name string, arg ...string) Cmd
+	Command(ctx context.Context, logger logAdapter, name string, arg ...string) Cmd
 }
 
 // Cmd interface for command execution
@@ -70,7 +91,7 @@ type Cmd interface {
 // execCommander implements Commander using os/exec
 type execCommander struct{}
 
-func (e execCommander) Command(ctx context.Context, logger *tlog.Logger, name string, arg ...string) Cmd {
+func (e execCommander) Command(ctx context.Context, logger logAdapter, name string, arg ...string) Cmd {
 	logger.DebugContext(ctx, "Executing command", "name", name, "args", arg)
 	return exec.CommandContext(ctx, name, arg...)
 }
@@ -141,16 +162,10 @@ type SmartStatus struct {
 	Passed bool `json:"passed"`
 }
 
-// SmartSupport represents SMART availability and enablement status
+// SmartSupport represents SMART availability and enablement status.
 type SmartSupport struct {
 	Available bool `json:"available"`
 	Enabled   bool `json:"enabled"`
-}
-
-// SMARTSupportInfo represents SMART support and enablement information
-type SMARTSupportInfo struct {
-	Supported bool
-	Enabled   bool
 }
 
 // AtaSmartData represents ATA SMART attributes
@@ -300,7 +315,7 @@ type SmartClient interface {
 	RunSelfTest(ctx context.Context, devicePath string, testType string) error
 	RunSelfTestWithProgress(ctx context.Context, devicePath string, testType string, callback ProgressCallback) error
 	GetAvailableSelfTests(ctx context.Context, devicePath string) (*SelfTestInfo, error)
-	IsSMARTSupported(ctx context.Context, devicePath string) (*SMARTSupportInfo, error)
+	IsSMARTSupported(ctx context.Context, devicePath string) (*SmartSupport, error)
 	EnableSMART(ctx context.Context, devicePath string) error
 	DisableSMART(ctx context.Context, devicePath string) error
 	AbortSelfTest(ctx context.Context, devicePath string) error
@@ -312,7 +327,7 @@ type Client struct {
 	commander          Commander
 	deviceTypeCache    map[string]string // Maps device path to device type (e.g., "sat")
 	deviceTypeCacheMux sync.RWMutex      // Protects deviceTypeCache
-	logHandler         *tlog.Logger      // Logger for the client
+	logHandler         logAdapter        // Logger for the client
 	defaultCtx         context.Context   // Default context to use when nil is passed
 }
 
@@ -938,7 +953,7 @@ func (c *Client) GetAvailableSelfTests(ctx context.Context, devicePath string) (
 }
 
 // IsSMARTSupported checks if SMART is supported on a device and if it's enabled
-func (c *Client) IsSMARTSupported(ctx context.Context, devicePath string) (*SMARTSupportInfo, error) {
+func (c *Client) IsSMARTSupported(ctx context.Context, devicePath string) (*SmartSupport, error) {
 	if ctx == nil {
 		ctx = c.defaultCtx
 	}
@@ -947,18 +962,18 @@ func (c *Client) IsSMARTSupported(ctx context.Context, devicePath string) (*SMAR
 		return nil, fmt.Errorf("failed to get SMART info: %w", err)
 	}
 
-	supportInfo := &SMARTSupportInfo{}
+	supportInfo := &SmartSupport{}
 
 	// Check NVMe SMART support first
 	if smartInfo.SmartSupport != nil {
-		supportInfo.Supported = smartInfo.SmartSupport.Available
+		supportInfo.Available = smartInfo.SmartSupport.Available
 		supportInfo.Enabled = smartInfo.SmartSupport.Enabled
 		return supportInfo, nil
 	}
 
 	// Check ATA SMART data presence for support
 	if smartInfo.AtaSmartData != nil {
-		supportInfo.Supported = true
+		supportInfo.Available = true
 		// For ATA devices, if SMART data is present, assume it's enabled
 		// (ATA devices typically don't have a separate enabled/disabled status in JSON)
 		supportInfo.Enabled = true
@@ -967,13 +982,13 @@ func (c *Client) IsSMARTSupported(ctx context.Context, devicePath string) (*SMAR
 
 	// Check NVMe SMART health information as fallback
 	if smartInfo.NvmeSmartHealth != nil {
-		supportInfo.Supported = true
+		supportInfo.Available = true
 		supportInfo.Enabled = true
 		return supportInfo, nil
 	}
 
 	// Not supported
-	supportInfo.Supported = false
+	supportInfo.Available = false
 	supportInfo.Enabled = false
 	return supportInfo, nil
 }

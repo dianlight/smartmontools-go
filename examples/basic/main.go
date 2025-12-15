@@ -82,7 +82,7 @@ func main() {
 	if err != nil {
 		fmt.Println(yellow(fmt.Sprintf("Warning: Failed to check SMART support: %v", err)))
 	} else {
-		if smartSupported.Supported {
+		if smartSupported.Available {
 			fmt.Println(green("✓ SMART is supported"))
 		} else {
 			fmt.Println(red("✗ SMART is not supported"))

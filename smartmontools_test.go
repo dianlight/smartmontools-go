@@ -29,7 +29,7 @@ type mockCommander struct {
 	cmds map[string]*mockCmd
 }
 
-func (m *mockCommander) Command(ctx context.Context, logger *tlog.Logger, name string, arg ...string) Cmd {
+func (m *mockCommander) Command(ctx context.Context, logger logAdapter, name string, arg ...string) Cmd {
 	key := name
 	for _, a := range arg {
 		key += " " + a
@@ -1380,7 +1380,7 @@ func TestIsSMARTSupportedATA(t *testing.T) {
 		t.Errorf("Expected no error, got %v", err)
 	}
 
-	if !supportInfo.Supported {
+	if !supportInfo.Available {
 		t.Error("Expected SMART to be supported for ATA device")
 	}
 
@@ -1408,7 +1408,7 @@ func TestIsSMARTSupportedNVMe(t *testing.T) {
 		t.Errorf("Expected no error, got %v", err)
 	}
 
-	if !supportInfo.Supported {
+	if !supportInfo.Available {
 		t.Error("Expected SMART to be supported for NVMe device")
 	}
 
@@ -1437,7 +1437,7 @@ func TestIsSMARTSupportedNVMeWithSmartSupport(t *testing.T) {
 		t.Errorf("Expected no error, got %v", err)
 	}
 
-	if !supportInfo.Supported {
+	if !supportInfo.Available {
 		t.Error("Expected SMART to be supported for NVMe device")
 	}
 
@@ -1462,7 +1462,7 @@ func TestIsSMARTSupportedNotSupported(t *testing.T) {
 		t.Errorf("Expected no error, got %v", err)
 	}
 
-	if supportInfo.Supported {
+	if supportInfo.Available {
 		t.Error("Expected SMART to not be supported")
 	}
 
