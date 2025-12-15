@@ -95,7 +95,7 @@ func TestNilContextUsesDefault(t *testing.T) {
 	}
 
 	// Call ScanDevices with nil context - should use default
-	devices, err := client.ScanDevices(nil) //nolint:staticcheck // SA1012: nil context is intentional for testing default context
+	devices, err := client.ScanDevices(context.TODO()) //nolint:staticcheck // SA1012: nil context is intentional for testing default context
 	if err != nil {
 		t.Fatalf("Expected no error, got %v", err)
 	}
