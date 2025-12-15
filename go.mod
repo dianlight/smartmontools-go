@@ -3,7 +3,7 @@ module github.com/dianlight/smartmontools-go
 go 1.25.0
 
 require (
-	github.com/dianlight/tlog v0.0.1
+	github.com/dianlight/tlog v0.0.5
 	github.com/stretchr/testify v1.11.1
 )
 
