@@ -3,7 +3,7 @@ module github.com/dianlight/smartmontools-go
 go 1.25.0
 
 require (
-	github.com/dianlight/tlog v0.0.1
+	github.com/dianlight/tlog v0.1.0
 	github.com/stretchr/testify v1.11.1
 )
 
@@ -21,7 +21,7 @@ require (
 	github.com/samber/slog-formatter v1.2.0 // indirect
 	github.com/samber/slog-multi v1.6.0 // indirect
 	gitlab.com/tozd/go/errors v0.10.0 // indirect
-	golang.org/x/sys v0.29.0 // indirect
-	golang.org/x/text v0.26.0 // indirect
+	golang.org/x/sys v0.39.0 // indirect
+	golang.org/x/text v0.32.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
