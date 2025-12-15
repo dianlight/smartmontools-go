@@ -460,12 +460,17 @@ func (c *Client) GetSMARTInfo(ctx context.Context, devicePath string) (*SMARTInf
 			if len(output) > 0 && json.Unmarshal(output, &smartInfo) == nil {
 				smartInfo.InStandby = true
 				smartInfo.DiskType = determineDiskType(&smartInfo)
+				smartInfo.SmartSupport = c.isSMARTSupported(&smartInfo)
 				return &smartInfo, nil
 			}
 			// If no JSON output, return minimal info
 			return &SMARTInfo{
 				Device:    Device{Name: devicePath},
 				InStandby: true,
+				SmartSupport: &SmartSupport{
+					Available: true,
+					Enabled:   true,
+				},
 			}, nil
 		}
 
@@ -513,11 +518,16 @@ func (c *Client) GetSMARTInfo(ctx context.Context, devicePath string) (*SMARTInf
 									c.setCachedDeviceType(devicePath, deviceType)
 									retrySmartInfo.InStandby = true
 									retrySmartInfo.DiskType = determineDiskType(&retrySmartInfo)
+									retrySmartInfo.SmartSupport = c.isSMARTSupported(&retrySmartInfo)
 									return &retrySmartInfo, nil
 								}
 								return &SMARTInfo{
 									Device:    Device{Name: devicePath, Type: deviceType},
 									InStandby: true,
+									SmartSupport: &SmartSupport{
+										Available: true,
+										Enabled:   true,
+									},
 								}, nil
 							}
 						}
@@ -531,6 +541,8 @@ func (c *Client) GetSMARTInfo(ctx context.Context, devicePath string) (*SMARTInf
 									c.setCachedDeviceType(devicePath, deviceType)
 									c.logHandler.InfoContext(ctx, "Successfully accessed device", "devicePath", devicePath, "deviceType", deviceType)
 									retrySmartInfo.DiskType = determineDiskType(&retrySmartInfo)
+									smartInfo.SmartSupport = c.isSMARTSupported(&smartInfo)
+
 									return &retrySmartInfo, nil
 								}
 							}
@@ -543,6 +555,8 @@ func (c *Client) GetSMARTInfo(ctx context.Context, devicePath string) (*SMARTInf
 				smartInfo.DiskType = determineDiskType(&smartInfo)
 				// If we have valid device information, return it without error
 				// If device name is empty, SMART is likely not supported
+				smartInfo.SmartSupport = c.isSMARTSupported(&smartInfo)
+
 				if smartInfo.Device.Name != "" {
 					return &smartInfo, nil
 				}
@@ -953,6 +967,40 @@ func (c *Client) GetAvailableSelfTests(ctx context.Context, devicePath string) (
 }
 
 // IsSMARTSupported checks if SMART is supported on a device and if it's enabled
+func (c *Client) isSMARTSupported(smartInfo *SMARTInfo) *SmartSupport {
+
+	supportInfo := &SmartSupport{}
+
+	// Check NVMe SMART support first
+	if smartInfo.SmartSupport != nil {
+		supportInfo.Available = smartInfo.SmartSupport.Available
+		supportInfo.Enabled = smartInfo.SmartSupport.Enabled
+		return supportInfo
+	}
+
+	// Check ATA SMART data presence for support
+	if smartInfo.AtaSmartData != nil {
+		supportInfo.Available = true
+		// For ATA devices, if SMART data is present, assume it's enabled
+		// (ATA devices typically don't have a separate enabled/disabled status in JSON)
+		supportInfo.Enabled = true
+		return supportInfo
+	}
+
+	// Check NVMe SMART health information as fallback
+	if smartInfo.NvmeSmartHealth != nil {
+		supportInfo.Available = true
+		supportInfo.Enabled = true
+		return supportInfo
+	}
+
+	// Not supported
+	supportInfo.Available = false
+	supportInfo.Enabled = false
+	return supportInfo
+}
+
+// IsSMARTSupported checks if SMART is supported on a device and if it's enabled
 func (c *Client) IsSMARTSupported(ctx context.Context, devicePath string) (*SmartSupport, error) {
 	if ctx == nil {
 		ctx = c.defaultCtx
@@ -962,35 +1010,7 @@ func (c *Client) IsSMARTSupported(ctx context.Context, devicePath string) (*Smar
 		return nil, fmt.Errorf("failed to get SMART info: %w", err)
 	}
 
-	supportInfo := &SmartSupport{}
-
-	// Check NVMe SMART support first
-	if smartInfo.SmartSupport != nil {
-		supportInfo.Available = smartInfo.SmartSupport.Available
-		supportInfo.Enabled = smartInfo.SmartSupport.Enabled
-		return supportInfo, nil
-	}
-
-	// Check ATA SMART data presence for support
-	if smartInfo.AtaSmartData != nil {
-		supportInfo.Available = true
-		// For ATA devices, if SMART data is present, assume it's enabled
-		// (ATA devices typically don't have a separate enabled/disabled status in JSON)
-		supportInfo.Enabled = true
-		return supportInfo, nil
-	}
-
-	// Check NVMe SMART health information as fallback
-	if smartInfo.NvmeSmartHealth != nil {
-		supportInfo.Available = true
-		supportInfo.Enabled = true
-		return supportInfo, nil
-	}
-
-	// Not supported
-	supportInfo.Available = false
-	supportInfo.Enabled = false
-	return supportInfo, nil
+	return c.isSMARTSupported(smartInfo), nil
 }
 
 // EnableSMART enables SMART monitoring on a device

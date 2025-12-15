@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/dianlight/tlog"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // mockCmd implements Cmd interface for testing
@@ -48,9 +50,7 @@ func TestNewClient(t *testing.T) {
 	}
 
 	c := client.(*Client)
-	if c.smartctlPath == "" {
-		t.Error("Expected smartctlPath to be set")
-	}
+	assert.NotEmpty(t, c.smartctlPath, "Expected smartctlPath to be set")
 }
 
 func TestParseSmartctlVersion(t *testing.T) {
@@ -81,17 +81,12 @@ func TestParseSmartctlVersion(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			major, minor, err := parseSmartctlVersion(tc.input)
 			if tc.wantErr {
-				if err == nil {
-					t.Fatalf("expected error, got none")
-				}
+				assert.Error(t, err, "expected error, got none")
 				return
 			}
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if major != tc.major || minor != tc.minor {
-				t.Fatalf("expected %d.%d, got %d.%d", tc.major, tc.minor, major, minor)
-			}
+			assert.NoError(t, err)
+			assert.Equal(t, tc.major, major, "major version mismatch")
+			assert.Equal(t, tc.minor, minor, "minor version mismatch")
 		})
 	}
 }
@@ -124,17 +119,10 @@ func TestScanDevices(t *testing.T) {
 	client, _ := NewClient(WithSmartctlPath("/usr/sbin/smartctl"), WithCommander(commander))
 
 	devices, err := client.ScanDevices(context.Background())
-	if err != nil {
-		t.Errorf("Expected no error, got %v", err)
-	}
-
-	if len(devices) != 2 {
-		t.Errorf("Expected 2 devices, got %d", len(devices))
-	}
-
-	if devices[0].Name != "/dev/sda" || devices[0].Type != "ata" {
-		t.Errorf("Unexpected device 0: %+v", devices[0])
-	}
+	assert.NoError(t, err)
+	assert.Len(t, devices, 2)
+	assert.Equal(t, "/dev/sda", devices[0].Name)
+	assert.Equal(t, "ata", devices[0].Type)
 }
 
 func TestScanDevicesError(t *testing.T) {
@@ -146,9 +134,7 @@ func TestScanDevicesError(t *testing.T) {
 	client, _ := NewClient(WithSmartctlPath("/usr/sbin/smartctl"), WithCommander(commander))
 
 	_, err := client.ScanDevices(context.Background())
-	if err == nil {
-		t.Error("Expected error, got nil")
-	}
+	assert.Error(t, err)
 }
 
 func TestGetSMARTInfo(t *testing.T) {
@@ -897,44 +883,19 @@ func TestGetSMARTInfo(t *testing.T) {
 	client, _ := NewClient(WithSmartctlPath("/usr/sbin/smartctl"), WithCommander(commander))
 
 	info, err := client.GetSMARTInfo(context.Background(), "/dev/sda")
-	if err != nil {
-		t.Errorf("Expected no error, got %v", err)
-	}
-
-	if info.Device.Name != "/dev/sda" {
-		t.Errorf("Expected device name /dev/sda, got %s", info.Device.Name)
-	}
-
-	if info.ModelName != "KINGSTON SV300S37A240G" {
-		t.Errorf("Expected model KINGSTON SV300S37A240G, got %s", info.ModelName)
-	}
-
-	if !info.SmartStatus.Passed {
-		t.Error("Expected SMART status passed")
-	}
-
-	if info.Smartctl == nil || len(info.Smartctl.Messages) != 1 {
-		t.Errorf("Expected 1 message, got %v", info.Smartctl)
-	}
-
-	if info.Smartctl.Messages[0].String != "Test informational message" {
-		t.Errorf("Expected message 'Test informational message', got '%s'", info.Smartctl.Messages[0].String)
-	}
-
-	if info.Smartctl.Messages[0].Severity != "info" {
-		t.Errorf("Expected severity 'info', got '%s'", info.Smartctl.Messages[0].Severity)
-	}
+	assert.NoError(t, err)
+	assert.Equal(t, "/dev/sda", info.Device.Name)
+	assert.Equal(t, "KINGSTON SV300S37A240G", info.ModelName)
+	assert.True(t, info.SmartStatus.Passed, "Expected SMART status passed")
+	assert.NotNil(t, info.Smartctl)
+	assert.Len(t, info.Smartctl.Messages, 1)
+	assert.Equal(t, "Test informational message", info.Smartctl.Messages[0].String)
+	assert.Equal(t, "info", info.Smartctl.Messages[0].Severity)
 
 	// Check rotation rate and disk type
-	if info.RotationRate == nil {
-		t.Error("Expected rotation_rate to be set")
-	} else if *info.RotationRate != 0 {
-		t.Errorf("Expected rotation_rate 0 for SSD, got %d", *info.RotationRate)
-	}
-
-	if info.DiskType != "SSD" {
-		t.Errorf("Expected disk type 'SSD', got '%s'", info.DiskType)
-	}
+	assert.NotNil(t, info.RotationRate, "Expected rotation_rate to be set")
+	assert.Equal(t, 0, *info.RotationRate, "Expected rotation_rate 0 for SSD")
+	assert.Equal(t, "SSD", info.DiskType)
 }
 
 func TestGetSMARTInfoUnsupported(t *testing.T) {
@@ -979,35 +940,15 @@ func TestGetSMARTInfoUnsupported(t *testing.T) {
 	client, _ := NewClient(WithSmartctlPath("/usr/sbin/smartctl"), WithCommander(commander))
 
 	info, err := client.GetSMARTInfo(context.Background(), "/dev/sda")
-	if err != nil && err.Error() != "SMART Not Supported" {
-		t.Errorf("Expected SMART Not Supported error, got %v", err)
-	} else if err == nil {
-		t.Errorf("Expected an error, got %v", err)
-	}
-
-	if info.Device.Name != "" {
-		t.Errorf("Expected device name empty, got %s", info.Device.Name)
-	}
-
-	if info.ModelName != "" {
-		t.Errorf("Expected model name empty, got %s", info.ModelName)
-	}
-
-	if info.SmartStatus.Passed {
-		t.Error("Expected SMART status not passed")
-	}
-
-	if info.Smartctl == nil || len(info.Smartctl.Messages) != 1 {
-		t.Errorf("Expected 1 message, got %v", info.Smartctl)
-	}
-
-	if info.Smartctl.Messages[0].String != "/dev/disk/by-id/usb-Flash_Disk_3.0_7966051146147389472-0:0: Unknown USB bridge [0x048d:0x1234 (0x200)]" {
-		t.Errorf("Expected message '/dev/disk/by-id/usb-Flash_Disk_3.0_7966051146147389472-0:0: Unknown USB bridge [0x048d:0x1234 (0x200)]', got '%s'", info.Smartctl.Messages[0].String)
-	}
-
-	if info.Smartctl.Messages[0].Severity != "error" {
-		t.Errorf("Expected severity 'error', got '%s'", info.Smartctl.Messages[0].Severity)
-	}
+	assert.Error(t, err)
+	assert.Equal(t, "SMART Not Supported", err.Error())
+	assert.Empty(t, info.Device.Name)
+	assert.Empty(t, info.ModelName)
+	assert.False(t, info.SmartStatus.Passed, "Expected SMART status not passed")
+	assert.NotNil(t, info.Smartctl)
+	assert.Len(t, info.Smartctl.Messages, 1)
+	assert.Equal(t, "/dev/disk/by-id/usb-Flash_Disk_3.0_7966051146147389472-0:0: Unknown USB bridge [0x048d:0x1234 (0x200)]", info.Smartctl.Messages[0].String)
+	assert.Equal(t, "error", info.Smartctl.Messages[0].Severity)
 }
 
 func TestGetSMARTInfoExitError(t *testing.T) {
@@ -1031,25 +972,12 @@ func TestGetSMARTInfoExitError(t *testing.T) {
 	client, _ := NewClient(WithSmartctlPath("/usr/sbin/smartctl"), WithCommander(commander))
 
 	info, err := client.GetSMARTInfo(context.Background(), "/dev/sda")
-	if err != nil {
-		t.Errorf("Expected no error, got %v", err)
-	}
-
-	if info.SmartStatus.Passed {
-		t.Error("Expected SMART status failed")
-	}
-
-	if info.Smartctl == nil || len(info.Smartctl.Messages) != 1 {
-		t.Errorf("Expected 1 message, got %v", info.Smartctl)
-	}
-
-	if info.Smartctl.Messages[0].String != "Test error message" {
-		t.Errorf("Expected message 'Test error message', got '%s'", info.Smartctl.Messages[0].String)
-	}
-
-	if info.Smartctl.Messages[0].Severity != "error" {
-		t.Errorf("Expected severity 'error', got '%s'", info.Smartctl.Messages[0].Severity)
-	}
+	assert.NoError(t, err)
+	assert.False(t, info.SmartStatus.Passed, "Expected SMART status failed")
+	assert.NotNil(t, info.Smartctl)
+	assert.Len(t, info.Smartctl.Messages, 1)
+	assert.Equal(t, "Test error message", info.Smartctl.Messages[0].String)
+	assert.Equal(t, "error", info.Smartctl.Messages[0].Severity)
 }
 
 func TestCheckHealth(t *testing.T) {
@@ -1061,13 +989,8 @@ func TestCheckHealth(t *testing.T) {
 	client, _ := NewClient(WithSmartctlPath("/usr/sbin/smartctl"), WithCommander(commander))
 
 	healthy, err := client.CheckHealth(context.Background(), "/dev/sda")
-	if err != nil {
-		t.Errorf("Expected no error, got %v", err)
-	}
-
-	if !healthy {
-		t.Error("Expected device to be healthy")
-	}
+	assert.NoError(t, err)
+	assert.True(t, healthy, "Expected device to be healthy")
 }
 
 func TestCheckHealthFailed(t *testing.T) {
@@ -1079,13 +1002,8 @@ func TestCheckHealthFailed(t *testing.T) {
 	client, _ := NewClient(WithSmartctlPath("/usr/sbin/smartctl"), WithCommander(commander))
 
 	healthy, err := client.CheckHealth(context.Background(), "/dev/sda")
-	if err != nil {
-		t.Errorf("Expected no error, got %v", err)
-	}
-
-	if healthy {
-		t.Error("Expected device to be unhealthy")
-	}
+	assert.NoError(t, err)
+	assert.False(t, healthy, "Expected device to be unhealthy")
 }
 
 func TestCheckHealthExitError(t *testing.T) {
@@ -1100,13 +1018,8 @@ func TestCheckHealthExitError(t *testing.T) {
 	client, _ := NewClient(WithSmartctlPath("/usr/sbin/smartctl"), WithCommander(commander))
 
 	healthy, err := client.CheckHealth(context.Background(), "/dev/sda")
-	if err != nil {
-		t.Errorf("Expected no error, got %v", err)
-	}
-
-	if !healthy {
-		t.Error("Expected device to be healthy from stderr")
-	}
+	assert.NoError(t, err)
+	assert.True(t, healthy, "Expected device to be healthy from stderr")
 }
 
 func TestGetDeviceInfo(t *testing.T) {
@@ -1123,13 +1036,10 @@ func TestGetDeviceInfo(t *testing.T) {
 	client, _ := NewClient(WithSmartctlPath("/usr/sbin/smartctl"), WithCommander(commander))
 
 	info, err := client.GetDeviceInfo(context.Background(), "/dev/sda")
-	if err != nil {
-		t.Errorf("Expected no error, got %v", err)
-	}
-
-	if model, ok := info["model_name"].(string); !ok || model != "Test Drive" {
-		t.Errorf("Expected model_name 'Test Drive', got %v", info["model_name"])
-	}
+	assert.NoError(t, err)
+	model, ok := info["model_name"].(string)
+	assert.True(t, ok, "Expected model_name to be a string")
+	assert.Equal(t, "Test Drive", model)
 }
 
 func TestRunSelfTest(t *testing.T) {
@@ -1141,9 +1051,7 @@ func TestRunSelfTest(t *testing.T) {
 	client, _ := NewClient(WithSmartctlPath("/usr/sbin/smartctl"), WithCommander(commander))
 
 	err := client.RunSelfTest(context.Background(), "/dev/sda", "short")
-	if err != nil {
-		t.Errorf("Expected no error, got %v", err)
-	}
+	assert.NoError(t, err)
 }
 
 func TestRunSelfTestInvalidType(t *testing.T) {
@@ -1153,9 +1061,7 @@ func TestRunSelfTestInvalidType(t *testing.T) {
 	client, _ := NewClient(WithSmartctlPath("/usr/sbin/smartctl"), WithCommander(commander))
 
 	err := client.RunSelfTest(context.Background(), "/dev/sda", "invalid")
-	if err == nil {
-		t.Error("Expected error for invalid test type")
-	}
+	assert.Error(t, err, "Expected error for invalid test type")
 }
 
 func TestRunSelfTestWithProgressInvalidType(t *testing.T) {
@@ -1166,9 +1072,7 @@ func TestRunSelfTestWithProgressInvalidType(t *testing.T) {
 
 	ctx := context.Background()
 	err := client.RunSelfTestWithProgress(ctx, "/dev/sda", "invalid", nil)
-	if err == nil {
-		t.Error("Expected error for invalid test type")
-	}
+	assert.Error(t, err, "Expected error for invalid test type")
 }
 
 func TestRunSelfTestWithProgress(t *testing.T) {
@@ -1226,21 +1130,10 @@ func TestRunSelfTestWithProgress(t *testing.T) {
 	}
 
 	err := client.RunSelfTestWithProgress(ctx, "/dev/sda", "short", callback)
-	if err != nil {
-		t.Errorf("Expected no error, got %v", err)
-	}
-
-	if !progressCalled {
-		t.Error("Expected progress callback to be called")
-	}
-
-	if finalProgress != 100 {
-		t.Errorf("Expected final progress 100, got %d", finalProgress)
-	}
-
-	if finalStatus != "Self-test completed" {
-		t.Errorf("Expected final status 'Self-test completed', got '%s'", finalStatus)
-	}
+	assert.NoError(t, err)
+	assert.True(t, progressCalled, "Expected progress callback to be called")
+	assert.Equal(t, 100, finalProgress, "Expected final progress 100")
+	assert.Equal(t, "Self-test completed", finalStatus)
 }
 
 func TestGetAvailableSelfTestsATA(t *testing.T) {
@@ -1261,20 +1154,10 @@ func TestGetAvailableSelfTestsATA(t *testing.T) {
 	client, _ := NewClient(WithSmartctlPath("/usr/sbin/smartctl"), WithCommander(commander))
 
 	info, err := client.GetAvailableSelfTests(context.Background(), "/dev/sda")
-	if err != nil {
-		t.Errorf("Expected no error, got %v", err)
-	}
+	assert.NoError(t, err)
 
 	expected := []string{"short", "long", "conveyance", "offline"}
-	if len(info.Available) != len(expected) {
-		t.Errorf("Expected %d tests, got %d", len(expected), len(info.Available))
-	}
-
-	for i, test := range expected {
-		if i >= len(info.Available) || info.Available[i] != test {
-			t.Errorf("Expected test %s at position %d, got %v", test, i, info.Available)
-		}
-	}
+	assert.Equal(t, expected, info.Available)
 }
 
 func TestGetAvailableSelfTestsATANoCapabilities(t *testing.T) {
@@ -1289,13 +1172,8 @@ func TestGetAvailableSelfTestsATANoCapabilities(t *testing.T) {
 	client, _ := NewClient(WithSmartctlPath("/usr/sbin/smartctl"), WithCommander(commander))
 
 	info, err := client.GetAvailableSelfTests(context.Background(), "/dev/sda")
-	if err != nil {
-		t.Errorf("Expected no error, got %v", err)
-	}
-
-	if len(info.Available) != 0 {
-		t.Errorf("Expected no tests, got %v", info.Available)
-	}
+	assert.NoError(t, err)
+	assert.Empty(t, info.Available, "Expected no tests")
 }
 
 func TestGetAvailableSelfTestsNVMe(t *testing.T) {
@@ -1312,14 +1190,8 @@ func TestGetAvailableSelfTestsNVMe(t *testing.T) {
 	client, _ := NewClient(WithSmartctlPath("/usr/sbin/smartctl"), WithCommander(commander))
 
 	info, err := client.GetAvailableSelfTests(context.Background(), "/dev/nvme0n1")
-	if err != nil {
-		t.Errorf("Expected no error, got %v", err)
-	}
-
-	expected := []string{"short"}
-	if len(info.Available) != len(expected) || info.Available[0] != expected[0] {
-		t.Errorf("Expected %v, got %v", expected, info.Available)
-	}
+	assert.NoError(t, err)
+	assert.Equal(t, []string{"short"}, info.Available)
 }
 
 func TestGetAvailableSelfTestsNVMeNoSupport(t *testing.T) {
@@ -1336,13 +1208,8 @@ func TestGetAvailableSelfTestsNVMeNoSupport(t *testing.T) {
 	client, _ := NewClient(WithSmartctlPath("/usr/sbin/smartctl"), WithCommander(commander))
 
 	info, err := client.GetAvailableSelfTests(context.Background(), "/dev/nvme0n1")
-	if err != nil {
-		t.Errorf("Expected no error, got %v", err)
-	}
-
-	if len(info.Available) != 0 {
-		t.Errorf("Expected no tests, got %v", info.Available)
-	}
+	assert.NoError(t, err)
+	assert.Empty(t, info.Available, "Expected no tests")
 }
 
 func TestGetAvailableSelfTestsError(t *testing.T) {
@@ -1354,9 +1221,7 @@ func TestGetAvailableSelfTestsError(t *testing.T) {
 	client, _ := NewClient(WithSmartctlPath("/usr/sbin/smartctl"), WithCommander(commander))
 
 	_, err := client.GetAvailableSelfTests(context.Background(), "/dev/sda")
-	if err == nil {
-		t.Error("Expected error, got nil")
-	}
+	assert.Error(t, err)
 }
 
 func TestIsSMARTSupportedATA(t *testing.T) {
@@ -1376,17 +1241,10 @@ func TestIsSMARTSupportedATA(t *testing.T) {
 	client, _ := NewClient(WithSmartctlPath("/usr/sbin/smartctl"), WithCommander(commander))
 
 	supportInfo, err := client.IsSMARTSupported(context.Background(), "/dev/sda")
-	if err != nil {
-		t.Errorf("Expected no error, got %v", err)
-	}
-
-	if !supportInfo.Available {
-		t.Error("Expected SMART to be supported for ATA device")
-	}
-
-	if !supportInfo.Enabled {
-		t.Error("Expected SMART to be enabled for ATA device")
-	}
+	require.NoError(t, err)
+	require.NotNil(t, supportInfo)
+	assert.True(t, supportInfo.Available, "Expected SMART to be supported for ATA device")
+	assert.True(t, supportInfo.Enabled, "Expected SMART to be enabled for ATA device")
 }
 
 func TestIsSMARTSupportedNVMe(t *testing.T) {
@@ -1404,26 +1262,27 @@ func TestIsSMARTSupportedNVMe(t *testing.T) {
 	client, _ := NewClient(WithSmartctlPath("/usr/sbin/smartctl"), WithCommander(commander))
 
 	supportInfo, err := client.IsSMARTSupported(context.Background(), "/dev/nvme0n1")
-	if err != nil {
-		t.Errorf("Expected no error, got %v", err)
-	}
-
-	if !supportInfo.Available {
-		t.Error("Expected SMART to be supported for NVMe device")
-	}
-
-	if !supportInfo.Enabled {
-		t.Error("Expected SMART to be enabled for NVMe device")
-	}
+	require.NoError(t, err)
+	require.NotNil(t, supportInfo)
+	assert.True(t, supportInfo.Available, "Expected SMART to be supported for NVMe device")
+	assert.True(t, supportInfo.Enabled, "Expected SMART to be enabled for NVMe device")
 }
 
 func TestIsSMARTSupportedNVMeWithSmartSupport(t *testing.T) {
 	mockJSON := `{
-		"device": {"name": "/dev/nvme0n1", "type": "nvme"},
-		"smart_support": {
-			"available": true,
-			"enabled": false
-		}
+	"json_format_version": [1, 0],
+	"smartctl": {
+		"version": [7, 5],
+		"argv": ["smartctl", "--nocheck=standby", "-a", "-j", "/dev/nvme0n1"],
+		"exit_status": 0
+	},
+	"device": {"name": "/dev/nvme0n1", "type": "nvme"},
+	"model_name": "Samsung SSD 970 EVO",
+	"serial_number": "S5H9NJ0N123456",
+	"smart_support": {
+		"available": true,
+		"enabled": false
+	    }
 	}`
 	commander := &mockCommander{
 		cmds: map[string]*mockCmd{
@@ -1433,17 +1292,10 @@ func TestIsSMARTSupportedNVMeWithSmartSupport(t *testing.T) {
 	client, _ := NewClient(WithSmartctlPath("/usr/sbin/smartctl"), WithCommander(commander))
 
 	supportInfo, err := client.IsSMARTSupported(context.Background(), "/dev/nvme0n1")
-	if err != nil {
-		t.Errorf("Expected no error, got %v", err)
-	}
-
-	if !supportInfo.Available {
-		t.Error("Expected SMART to be supported for NVMe device")
-	}
-
-	if supportInfo.Enabled {
-		t.Error("Expected SMART to be disabled for NVMe device")
-	}
+	require.NoError(t, err)
+	require.NotNil(t, supportInfo)
+	assert.True(t, supportInfo.Available, "Expected SMART to be supported for NVMe device")
+	assert.False(t, supportInfo.Enabled, "Expected SMART to be disabled for NVMe device")
 }
 
 func TestIsSMARTSupportedNotSupported(t *testing.T) {
@@ -1458,17 +1310,10 @@ func TestIsSMARTSupportedNotSupported(t *testing.T) {
 	client, _ := NewClient(WithSmartctlPath("/usr/sbin/smartctl"), WithCommander(commander))
 
 	supportInfo, err := client.IsSMARTSupported(context.Background(), "/dev/sda")
-	if err != nil {
-		t.Errorf("Expected no error, got %v", err)
-	}
-
-	if supportInfo.Available {
-		t.Error("Expected SMART to not be supported")
-	}
-
-	if supportInfo.Enabled {
-		t.Error("Expected SMART to not be enabled")
-	}
+	require.NoError(t, err)
+	require.NotNil(t, supportInfo)
+	assert.False(t, supportInfo.Available, "Expected SMART to not be supported")
+	assert.False(t, supportInfo.Enabled, "Expected SMART to not be enabled")
 }
 
 func TestIsSMARTSupportedError(t *testing.T) {
@@ -1480,9 +1325,7 @@ func TestIsSMARTSupportedError(t *testing.T) {
 	client, _ := NewClient(WithSmartctlPath("/usr/sbin/smartctl"), WithCommander(commander))
 
 	_, err := client.IsSMARTSupported(context.Background(), "/dev/sda")
-	if err == nil {
-		t.Error("Expected error, got nil")
-	}
+	assert.Error(t, err)
 }
 
 func TestEnableSMART(t *testing.T) {
@@ -1494,9 +1337,7 @@ func TestEnableSMART(t *testing.T) {
 	client, _ := NewClient(WithSmartctlPath("/usr/sbin/smartctl"), WithCommander(commander))
 
 	err := client.EnableSMART(context.Background(), "/dev/sda")
-	if err != nil {
-		t.Errorf("Expected no error, got %v", err)
-	}
+	assert.NoError(t, err)
 }
 
 func TestEnableSMARTError(t *testing.T) {
@@ -1508,9 +1349,7 @@ func TestEnableSMARTError(t *testing.T) {
 	client, _ := NewClient(WithSmartctlPath("/usr/sbin/smartctl"), WithCommander(commander))
 
 	err := client.EnableSMART(context.Background(), "/dev/sda")
-	if err == nil {
-		t.Error("Expected error, got nil")
-	}
+	assert.Error(t, err)
 }
 
 func TestDisableSMART(t *testing.T) {
@@ -1522,9 +1361,7 @@ func TestDisableSMART(t *testing.T) {
 	client, _ := NewClient(WithSmartctlPath("/usr/sbin/smartctl"), WithCommander(commander))
 
 	err := client.DisableSMART(context.Background(), "/dev/sda")
-	if err != nil {
-		t.Errorf("Expected no error, got %v", err)
-	}
+	assert.NoError(t, err)
 }
 
 func TestDisableSMARTError(t *testing.T) {
@@ -1536,9 +1373,7 @@ func TestDisableSMARTError(t *testing.T) {
 	client, _ := NewClient(WithSmartctlPath("/usr/sbin/smartctl"), WithCommander(commander))
 
 	err := client.DisableSMART(context.Background(), "/dev/sda")
-	if err == nil {
-		t.Error("Expected error, got nil")
-	}
+	assert.Error(t, err)
 }
 
 func TestAbortSelfTest(t *testing.T) {
@@ -1550,9 +1385,7 @@ func TestAbortSelfTest(t *testing.T) {
 	client, _ := NewClient(WithSmartctlPath("/usr/sbin/smartctl"), WithCommander(commander))
 
 	err := client.AbortSelfTest(context.Background(), "/dev/sda")
-	if err != nil {
-		t.Errorf("Expected no error, got %v", err)
-	}
+	assert.NoError(t, err)
 }
 
 func TestAbortSelfTestError(t *testing.T) {
@@ -1564,9 +1397,7 @@ func TestAbortSelfTestError(t *testing.T) {
 	client, _ := NewClient(WithSmartctlPath("/usr/sbin/smartctl"), WithCommander(commander))
 
 	err := client.AbortSelfTest(context.Background(), "/dev/sda")
-	if err == nil {
-		t.Error("Expected error, got nil")
-	}
+	assert.Error(t, err)
 }
 
 func TestDiskTypeDetectionSSD(t *testing.T) {
@@ -1585,19 +1416,10 @@ func TestDiskTypeDetectionSSD(t *testing.T) {
 	client, _ := NewClient(WithSmartctlPath("/usr/sbin/smartctl"), WithCommander(commander))
 
 	info, err := client.GetSMARTInfo(context.Background(), "/dev/sda")
-	if err != nil {
-		t.Errorf("Expected no error, got %v", err)
-	}
-
-	if info.RotationRate == nil {
-		t.Error("Expected rotation_rate to be set")
-	} else if *info.RotationRate != 0 {
-		t.Errorf("Expected rotation_rate 0 for SSD, got %d", *info.RotationRate)
-	}
-
-	if info.DiskType != "SSD" {
-		t.Errorf("Expected disk type 'SSD', got '%s'", info.DiskType)
-	}
+	assert.NoError(t, err)
+	assert.NotNil(t, info.RotationRate, "Expected rotation_rate to be set")
+	assert.Equal(t, 0, *info.RotationRate, "Expected rotation_rate 0 for SSD")
+	assert.Equal(t, "SSD", info.DiskType)
 }
 
 func TestDiskTypeDetectionHDD(t *testing.T) {
@@ -1616,19 +1438,10 @@ func TestDiskTypeDetectionHDD(t *testing.T) {
 	client, _ := NewClient(WithSmartctlPath("/usr/sbin/smartctl"), WithCommander(commander))
 
 	info, err := client.GetSMARTInfo(context.Background(), "/dev/sdb")
-	if err != nil {
-		t.Errorf("Expected no error, got %v", err)
-	}
-
-	if info.RotationRate == nil {
-		t.Error("Expected rotation_rate to be set")
-	} else if *info.RotationRate != 7200 {
-		t.Errorf("Expected rotation_rate 7200 for HDD, got %d", *info.RotationRate)
-	}
-
-	if info.DiskType != "HDD" {
-		t.Errorf("Expected disk type 'HDD', got '%s'", info.DiskType)
-	}
+	assert.NoError(t, err)
+	assert.NotNil(t, info.RotationRate, "Expected rotation_rate to be set")
+	assert.Equal(t, 7200, *info.RotationRate, "Expected rotation_rate 7200 for HDD")
+	assert.Equal(t, "HDD", info.DiskType)
 }
 
 func TestDiskTypeDetectionNVMe(t *testing.T) {
@@ -1649,18 +1462,11 @@ func TestDiskTypeDetectionNVMe(t *testing.T) {
 	client, _ := NewClient(WithSmartctlPath("/usr/sbin/smartctl"), WithCommander(commander))
 
 	info, err := client.GetSMARTInfo(context.Background(), "/dev/nvme0n1")
-	if err != nil {
-		t.Errorf("Expected no error, got %v", err)
-	}
-
-	if info.DiskType != "NVMe" {
-		t.Errorf("Expected disk type 'NVMe', got '%s'", info.DiskType)
-	}
+	assert.NoError(t, err)
+	assert.Equal(t, "NVMe", info.DiskType)
 
 	// NVMe devices don't have rotation_rate
-	if info.RotationRate != nil {
-		t.Errorf("Expected no rotation_rate for NVMe, got %d", *info.RotationRate)
-	}
+	assert.Nil(t, info.RotationRate, "Expected no rotation_rate for NVMe")
 }
 
 func TestDiskTypeDetectionUnknown(t *testing.T) {
@@ -1678,13 +1484,8 @@ func TestDiskTypeDetectionUnknown(t *testing.T) {
 	client, _ := NewClient(WithSmartctlPath("/usr/sbin/smartctl"), WithCommander(commander))
 
 	info, err := client.GetSMARTInfo(context.Background(), "/dev/sdc")
-	if err != nil {
-		t.Errorf("Expected no error, got %v", err)
-	}
-
-	if info.DiskType != "Unknown" {
-		t.Errorf("Expected disk type 'Unknown', got '%s'", info.DiskType)
-	}
+	assert.NoError(t, err)
+	assert.Equal(t, "Unknown", info.DiskType)
 }
 
 func TestDiskTypeDetectionSSDWithAttributes(t *testing.T) {
@@ -1711,13 +1512,8 @@ func TestDiskTypeDetectionSSDWithAttributes(t *testing.T) {
 	client, _ := NewClient(WithSmartctlPath("/usr/sbin/smartctl"), WithCommander(commander))
 
 	info, err := client.GetSMARTInfo(context.Background(), "/dev/sda")
-	if err != nil {
-		t.Errorf("Expected no error, got %v", err)
-	}
-
-	if info.DiskType != "SSD" {
-		t.Errorf("Expected disk type 'SSD' based on attribute 231, got '%s'", info.DiskType)
-	}
+	assert.NoError(t, err)
+	assert.Equal(t, "SSD", info.DiskType, "Expected disk type 'SSD' based on attribute 231")
 }
 
 func TestGetSMARTInfoUnknownUSBBridgeFallback(t *testing.T) {
@@ -1767,27 +1563,15 @@ func TestGetSMARTInfoUnknownUSBBridgeFallback(t *testing.T) {
 
 	// First call should detect unknown USB bridge and retry with -d sat
 	info, err := client.GetSMARTInfo(context.Background(), "/dev/usb0")
-	if err != nil {
-		t.Errorf("Expected no error after fallback, got %v", err)
-	}
-
-	if info.Device.Name != "/dev/disk/by-id/usb-Flash_Disk_3.0_7966051146147389472-0:0" {
-		t.Errorf("Expected device name from sat fallback, got %s", info.Device.Name)
-	}
-
-	if info.Device.Type != "sat" {
-		t.Errorf("Expected device type 'sat', got %s", info.Device.Type)
-	}
+	assert.NoError(t, err, "Expected no error after fallback")
+	assert.Equal(t, "/dev/disk/by-id/usb-Flash_Disk_3.0_7966051146147389472-0:0", info.Device.Name)
+	assert.Equal(t, "sat", info.Device.Type)
 
 	// Verify the device type is cached
 	c := client.(*Client)
 	cachedType, ok := c.getCachedDeviceType("/dev/usb0")
-	if !ok {
-		t.Error("Expected device type to be cached")
-	}
-	if cachedType != "sat" {
-		t.Errorf("Expected cached device type 'sat', got %s", cachedType)
-	}
+	assert.True(t, ok, "Expected device type to be cached")
+	assert.Equal(t, "sat", cachedType)
 }
 
 func TestGetSMARTInfoUnknownUSBBridgeFallbackAlreadyCached(t *testing.T) {
@@ -1822,17 +1606,9 @@ func TestGetSMARTInfoUnknownUSBBridgeFallbackAlreadyCached(t *testing.T) {
 
 	// This call should use the cached device type and not try the default first
 	info, err := client.GetSMARTInfo(context.Background(), "/dev/usb0")
-	if err != nil {
-		t.Errorf("Expected no error with cached type, got %v", err)
-	}
-
-	if info.Device.Name != "/dev/disk/by-id/usb-Flash_Disk_3.0_7966051146147389472-0:0" {
-		t.Errorf("Expected device name, got %s", info.Device.Name)
-	}
-
-	if info.Device.Type != "sat" {
-		t.Errorf("Expected device type 'sat', got %s", info.Device.Type)
-	}
+	assert.NoError(t, err, "Expected no error with cached type")
+	assert.Equal(t, "/dev/disk/by-id/usb-Flash_Disk_3.0_7966051146147389472-0:0", info.Device.Name)
+	assert.Equal(t, "sat", info.Device.Type)
 }
 
 func TestGetSMARTInfoUnknownUSBBridgeFallbackFailed(t *testing.T) {
@@ -1866,20 +1642,14 @@ func TestGetSMARTInfoUnknownUSBBridgeFallbackFailed(t *testing.T) {
 
 	// Should fail after trying both default and -d sat
 	info, err := client.GetSMARTInfo(context.Background(), "/dev/usb0")
-	if err == nil || err.Error() != "SMART Not Supported" {
-		t.Errorf("Expected 'SMART Not Supported' error, got %v", err)
-	}
-
-	if info.Device.Name != "" {
-		t.Errorf("Expected empty device name, got %s", info.Device.Name)
-	}
+	assert.Error(t, err)
+	assert.Equal(t, "SMART Not Supported", err.Error())
+	assert.Empty(t, info.Device.Name)
 
 	// Verify the device type is NOT cached (fallback failed)
 	c := client.(*Client)
 	_, ok := c.getCachedDeviceType("/dev/usb0")
-	if ok {
-		t.Error("Expected device type not to be cached when fallback fails")
-	}
+	assert.False(t, ok, "Expected device type not to be cached when fallback fails")
 }
 
 func TestIsUnknownUSBBridge(t *testing.T) {
@@ -1925,21 +1695,15 @@ func TestIsUnknownUSBBridge(t *testing.T) {
 				},
 			}
 			result := isUnknownUSBBridge(smartInfo)
-			if result != tt.expected {
-				t.Errorf("Expected %v, got %v", tt.expected, result)
-			}
+			assert.Equal(t, tt.expected, result)
 		})
 	}
 
 	// Test with nil smartInfo
-	if isUnknownUSBBridge(nil) {
-		t.Error("Expected false for nil smartInfo")
-	}
+	assert.False(t, isUnknownUSBBridge(nil), "Expected false for nil smartInfo")
 
 	// Test with nil Smartctl
-	if isUnknownUSBBridge(&SMARTInfo{}) {
-		t.Error("Expected false for nil Smartctl")
-	}
+	assert.False(t, isUnknownUSBBridge(&SMARTInfo{}), "Expected false for nil Smartctl")
 }
 
 func TestExtractUSBBridgeID(t *testing.T) {
@@ -1992,21 +1756,15 @@ func TestExtractUSBBridgeID(t *testing.T) {
 				},
 			}
 			result := extractUSBBridgeID(smartInfo)
-			if result != tt.expected {
-				t.Errorf("Expected %q, got %q", tt.expected, result)
-			}
+			assert.Equal(t, tt.expected, result)
 		})
 	}
 
 	// Test with nil smartInfo
-	if extractUSBBridgeID(nil) != "" {
-		t.Error("Expected empty string for nil smartInfo")
-	}
+	assert.Empty(t, extractUSBBridgeID(nil), "Expected empty string for nil smartInfo")
 
 	// Test with nil Smartctl
-	if extractUSBBridgeID(&SMARTInfo{}) != "" {
-		t.Error("Expected empty string for nil Smartctl")
-	}
+	assert.Empty(t, extractUSBBridgeID(&SMARTInfo{}), "Expected empty string for nil Smartctl")
 }
 
 func TestLoadDrivedbAddendum(t *testing.T) {
@@ -2022,18 +1780,14 @@ func TestLoadDrivedbAddendum(t *testing.T) {
 	}
 
 	for key, expectedValue := range expectedEntries {
-		if value, ok := cache[key]; !ok {
-			t.Errorf("Expected key %q to be in cache", key)
-		} else if value != expectedValue {
-			t.Errorf("Expected value %q for key %q, got %q", expectedValue, key, value)
-		}
+		value, ok := cache[key]
+		assert.True(t, ok, "Expected key %q to be in cache", key)
+		assert.Equal(t, expectedValue, value, "Expected value %q for key %q", expectedValue, key)
 	}
 
 	// Check that we have a reasonable number of entries
 	// The standard drivedb.h should have many more entries than the old addendum
-	if len(cache) < 100 {
-		t.Errorf("Expected at least 100 entries from drivedb.h, got %d", len(cache))
-	}
+	assert.GreaterOrEqual(t, len(cache), 100, "Expected at least 100 entries from drivedb.h")
 }
 
 func TestNewClientLoadsAddendum(t *testing.T) {
@@ -2048,16 +1802,12 @@ func TestNewClientLoadsAddendum(t *testing.T) {
 	c.deviceTypeCacheMux.RUnlock()
 
 	// Cache should be prepopulated with addendum entries
-	if cacheSize < 10 {
-		t.Errorf("Expected cache to be prepopulated with at least 10 entries, got %d", cacheSize)
-	}
+	assert.GreaterOrEqual(t, cacheSize, 10, "Expected cache to be prepopulated with at least 10 entries")
 
 	// Check that a known USB bridge is in the cache
-	if deviceType, ok := c.getCachedDeviceType("usb:0x152d:0x0578"); !ok {
-		t.Error("Expected usb:0x152d:0x0578 to be in cache")
-	} else if deviceType != "sat" {
-		t.Errorf("Expected device type 'sat', got %q", deviceType)
-	}
+	deviceType, ok := c.getCachedDeviceType("usb:0x152d:0x0578")
+	assert.True(t, ok, "Expected usb:0x152d:0x0578 to be in cache")
+	assert.Equal(t, "sat", deviceType, "Expected device type 'sat'")
 }
 
 func TestGetSMARTInfoWithKnownUSBBridge(t *testing.T) {
@@ -2116,20 +1866,11 @@ func TestGetSMARTInfoWithKnownUSBBridge(t *testing.T) {
 
 	// First call should detect USB bridge in addendum and use sat
 	info, err := client.GetSMARTInfo(context.Background(), "/dev/usb0")
-	if err != nil {
-		t.Errorf("Expected no error after using addendum, got %v", err)
-	}
-
-	if info.Device.Name != "/dev/usb0" {
-		t.Errorf("Expected device name /dev/usb0, got %s", info.Device.Name)
-	}
+	assert.NoError(t, err, "Expected no error after using addendum")
+	assert.Equal(t, "/dev/usb0", info.Device.Name)
 
 	// Verify the device path is cached
 	cachedType, ok := client.getCachedDeviceType("/dev/usb0")
-	if !ok {
-		t.Error("Expected device path to be cached")
-	}
-	if cachedType != "sat" {
-		t.Errorf("Expected cached device type 'sat', got %s", cachedType)
-	}
+	assert.True(t, ok, "Expected device path to be cached")
+	assert.Equal(t, "sat", cachedType)
 }

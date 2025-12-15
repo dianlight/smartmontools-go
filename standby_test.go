@@ -3,6 +3,8 @@ package smartmontools
 import (
 	"context"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 // TestGetSMARTInfoWithNoCheckStandby verifies --nocheck=standby is added for ATA devices
@@ -31,23 +33,12 @@ func TestGetSMARTInfoWithNoCheckStandby(t *testing.T) {
 	client, _ := NewClient(WithSmartctlPath("/usr/sbin/smartctl"), WithCommander(commander))
 
 	info, err := client.GetSMARTInfo(context.Background(), "/dev/sda")
-
-	if err != nil {
-		t.Errorf("Expected no error, got %v", err)
-	}
-
-	if info == nil {
-		t.Fatal("Expected SMARTInfo to be returned")
-	}
+	assert.NoError(t, err)
+	assert.NotNil(t, info, "Expected SMARTInfo to be returned")
 
 	// Verify device info is parsed correctly
-	if info.Device.Name != "/dev/sda" {
-		t.Errorf("Expected device name /dev/sda, got %s", info.Device.Name)
-	}
-
-	if info.ModelName != "Test Drive" {
-		t.Errorf("Expected model name 'Test Drive', got %s", info.ModelName)
-	}
+	assert.Equal(t, "/dev/sda", info.Device.Name)
+	assert.Equal(t, "Test Drive", info.ModelName)
 }
 
 // TestCheckHealthWithNoCheckStandby verifies --nocheck=standby is added
@@ -62,13 +53,8 @@ func TestCheckHealthWithNoCheckStandby(t *testing.T) {
 	client, _ := NewClient(WithSmartctlPath("/usr/sbin/smartctl"), WithCommander(commander))
 
 	healthy, err := client.CheckHealth(context.Background(), "/dev/sda")
-	if err != nil {
-		t.Errorf("Expected no error, got %v", err)
-	}
-
-	if !healthy {
-		t.Error("Expected device to be healthy")
-	}
+	assert.NoError(t, err)
+	assert.True(t, healthy, "Expected device to be healthy")
 }
 
 // TestGetDeviceInfoWithNoCheckStandby verifies --nocheck=standby is added
@@ -89,13 +75,10 @@ func TestGetDeviceInfoWithNoCheckStandby(t *testing.T) {
 	client, _ := NewClient(WithSmartctlPath("/usr/sbin/smartctl"), WithCommander(commander))
 
 	info, err := client.GetDeviceInfo(context.Background(), "/dev/sda")
-	if err != nil {
-		t.Errorf("Expected no error, got %v", err)
-	}
-
-	if model, ok := info["model_name"].(string); !ok || model != "Test Drive" {
-		t.Errorf("Expected model_name 'Test Drive', got %v", info["model_name"])
-	}
+	assert.NoError(t, err)
+	model, ok := info["model_name"].(string)
+	assert.True(t, ok, "Expected model_name to be a string")
+	assert.Equal(t, "Test Drive", model)
 }
 
 // TestGetAvailableSelfTestsWithNoCheckStandby verifies --nocheck=standby is added
@@ -118,13 +101,8 @@ func TestGetAvailableSelfTestsWithNoCheckStandby(t *testing.T) {
 	client, _ := NewClient(WithSmartctlPath("/usr/sbin/smartctl"), WithCommander(commander))
 
 	info, err := client.GetAvailableSelfTests(context.Background(), "/dev/sda")
-	if err != nil {
-		t.Errorf("Expected no error, got %v", err)
-	}
-
-	if len(info.Available) != 2 { // short and long
-		t.Errorf("Expected 2 tests, got %d", len(info.Available))
-	}
+	assert.NoError(t, err)
+	assert.Len(t, info.Available, 2, "Expected 2 tests (short and long)")
 }
 
 // TestIsATADevice tests the isATADevice helper function
@@ -148,9 +126,7 @@ func TestIsATADevice(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := isATADevice(tt.deviceType)
-			if result != tt.expected {
-				t.Errorf("isATADevice(%q) = %v, expected %v", tt.deviceType, result, tt.expected)
-			}
+			assert.Equal(t, tt.expected, result, "isATADevice(%q)", tt.deviceType)
 		})
 	}
 }
@@ -175,17 +151,9 @@ func TestGetSMARTInfoWithCachedATADeviceType(t *testing.T) {
 	c.setCachedDeviceType("/dev/sda", "sat")
 
 	info, err := client.GetSMARTInfo(context.Background(), "/dev/sda")
-	if err != nil {
-		t.Errorf("Expected no error, got %v", err)
-	}
-
-	if info.Device.Name != "/dev/sda" {
-		t.Errorf("Expected device name /dev/sda, got %s", info.Device.Name)
-	}
-
-	if info.ModelName != "Test Drive" {
-		t.Errorf("Expected model name 'Test Drive', got %s", info.ModelName)
-	}
+	assert.NoError(t, err)
+	assert.Equal(t, "/dev/sda", info.Device.Name)
+	assert.Equal(t, "Test Drive", info.ModelName)
 }
 
 // TestGetSMARTInfoWithCachedNVMeDeviceType tests NVMe devices don't get --nocheck=standby
@@ -208,17 +176,9 @@ func TestGetSMARTInfoWithCachedNVMeDeviceType(t *testing.T) {
 	c.setCachedDeviceType("/dev/nvme0n1", "nvme")
 
 	info, err := client.GetSMARTInfo(context.Background(), "/dev/nvme0n1")
-	if err != nil {
-		t.Errorf("Expected no error, got %v", err)
-	}
-
-	if info.Device.Name != "/dev/nvme0n1" {
-		t.Errorf("Expected device name /dev/nvme0n1, got %s", info.Device.Name)
-	}
-
-	if info.DiskType != "NVMe" {
-		t.Errorf("Expected disk type 'NVMe', got %s", info.DiskType)
-	}
+	assert.NoError(t, err)
+	assert.Equal(t, "/dev/nvme0n1", info.Device.Name)
+	assert.Equal(t, "NVMe", info.DiskType)
 }
 
 // TestInStandbyField tests that the InStandby field is properly exposed
@@ -232,7 +192,6 @@ func TestInStandbyField(t *testing.T) {
 		t.Error("Expected InStandby to be true")
 	}
 
-	if info.Device.Name != "/dev/sda" {
-		t.Errorf("Expected device name /dev/sda, got %s", info.Device.Name)
-	}
+	assert.True(t, info.InStandby, "Expected InStandby to be true")
+	assert.Equal(t, "/dev/sda", info.Device.Name)
 }

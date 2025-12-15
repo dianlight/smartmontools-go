@@ -44,7 +44,6 @@
     "better-comments.highlightPlainText": true,
     "bookmarks.label.suggestion": "suggestWhenSelectedOrLineWhenNoSelected",
     "github.copilot.chat.alternateGptPrompt.enabled": true,
-    "github.copilot.chat.completionsFetcher": "",
     "github.copilot.chat.editor.temporalContext.enabled": true,
     "github.copilot.chat.generateTests.codeLens": true,
     "github.copilot.chat.languageContext.fix.typescript.enabled": true,
@@ -176,7 +175,7 @@
     "files.autoSaveWorkspaceFilesOnly": true,
     "go.diagnostic.vulncheck": "Imports",
     "go.languageServerFlags": [
-        "-mcp.listen=localhost:8092"
+        "-mcp.listen=localhost:8094"
     ],
     "chat.mcp.serverSampling": {
         "srat/.vscode/mcp.json: gopls-mcp": {
