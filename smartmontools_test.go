@@ -1123,14 +1123,30 @@ func TestRunSelfTestWithProgress(t *testing.T) {
 	var finalProgress int
 	var finalStatus string
 
-	callback := func(progress int, status string) {
+	progress := make(chan int)
+
+	callback := func(iprogress int, status string) {
 		progressCalled = true
-		finalProgress = progress
+		finalProgress = iprogress
 		finalStatus = status
+		progress <- iprogress
 	}
 
 	err := client.RunSelfTestWithProgress(ctx, "/dev/sda", "short", callback)
 	assert.NoError(t, err)
+loop:
+	for {
+		select {
+		case <-ctx.Done():
+			t.Fatalf("Context closed before end %v", ctx.Err())
+			break loop
+		case p := <-progress:
+			if p >= 100 {
+				break loop
+			}
+		}
+	}
+
 	assert.True(t, progressCalled, "Expected progress callback to be called")
 	assert.Equal(t, 100, finalProgress, "Expected final progress 100")
 	assert.Equal(t, "Self-test completed", finalStatus)
