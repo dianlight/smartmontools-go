@@ -49,8 +49,8 @@ func TestCheckSmartStatus_ATANotRunning(t *testing.T) {
 // TestCheckSmartStatus_ATABoundaryValues tests checkSmartStatus boundary values for ATA
 func TestCheckSmartStatus_ATABoundaryValues(t *testing.T) {
 	tests := []struct {
-		name           string
-		value          int
+		name            string
+		value           int
 		expectedRunning bool
 	}{
 		{"value 239 - not running", 239, false},
@@ -203,13 +203,13 @@ func TestGetSMARTInfo_StandbyMode_PopulatesSmartStatus(t *testing.T) {
 			}
 		}
 	}`
-	
+
 	// Use exec.ExitError with ProcessState that returns exit code 2
 	mockExitErr := &exec.ExitError{}
 	// Note: We can't set ProcessState directly, so we need to use a different approach
 	// The actual test relies on the exitCode&2 check, which won't work with uninitialized ProcessState
 	// Instead, let's test without error to verify SmartStatus population works
-	
+
 	commander := &mockCommander{
 		cmds: map[string]*mockCmd{
 			"/usr/sbin/smartctl -a -j --nocheck=standby /dev/sdx": {
@@ -226,7 +226,7 @@ func TestGetSMARTInfo_StandbyMode_PopulatesSmartStatus(t *testing.T) {
 	// Can't test InStandby without proper exec.ExitError, so just verify SmartStatus
 	assert.True(t, info.SmartStatus.Running, "Expected SmartStatus.Running to be true")
 	assert.True(t, info.SmartStatus.Passed, "Expected SmartStatus.Passed to be true")
-	
+
 	_ = mockExitErr // Avoid unused variable warning
 }
 
@@ -235,7 +235,7 @@ func TestRunSelfTestWithProgress_UsesRemainingPercent(t *testing.T) {
 	// Note: RunSelfTestWithProgress starts a background goroutine that polls for progress.
 	// This test verifies that the callback mechanism works, not the full progress tracking.
 	// The actual progress tracking with remaining_percent is integration-tested.
-	
+
 	// Mock SMART info with self-test capabilities
 	capsJSON := `{
 		"ata_smart_data": {
@@ -253,7 +253,7 @@ func TestRunSelfTestWithProgress_UsesRemainingPercent(t *testing.T) {
 	commander := &mockCommander{
 		cmds: map[string]*mockCmd{
 			"/usr/sbin/smartctl -c -j --nocheck=standby /dev/sda": {output: []byte(capsJSON)},
-			"/usr/sbin/smartctl -t short /dev/sda":                 {output: []byte("")},
+			"/usr/sbin/smartctl -t short /dev/sda":                {output: []byte("")},
 		},
 	}
 	client, _ := NewClient(WithSmartctlPath("/usr/sbin/smartctl"), WithCommander(commander))
@@ -266,6 +266,7 @@ func TestRunSelfTestWithProgress_UsesRemainingPercent(t *testing.T) {
 }
 
 // mockExitError is a mock implementation of exec.ExitError that properly implements ExitCode()
+/*
 type mockExitError struct {
 	code int
 }
@@ -277,7 +278,7 @@ func (m *mockExitError) Error() string {
 func (m *mockExitError) ExitCode() int {
 	return m.code
 }
-
+*/
 // TestStatusFieldUnmarshal_WithRemainingPercent tests StatusField unmarshaling with remaining_percent
 func TestStatusFieldUnmarshal_WithRemainingPercent(t *testing.T) {
 	jsonData := `{
