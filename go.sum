@@ -6,6 +6,8 @@ github.com/dianlight/tlog v0.0.5 h1:b6H0PC4KzQFw00v1DQ8JWVcoMMuBSVWEDMN1W5g4F0g=
 github.com/dianlight/tlog v0.0.5/go.mod h1:YTXWe81e5+V9ltDKIf/21mMMGi4Rwoxn5b6gYpASAZA=
 github.com/dianlight/tlog v0.1.0 h1:of5nPDQifdzeuVnZVdeZ0/A873MJASIMtjmjlERsolc=
 github.com/dianlight/tlog v0.1.0/go.mod h1:bSigPV57suAGc9xR+3C0pC1F6bZmJcIqVBlLDz26ERk=
+github.com/dianlight/tlog v0.1.2 h1:78hqZ+/JRSbaUYIay9QonfXDSC5InxMRDlPCU9mSBeg=
+github.com/dianlight/tlog v0.1.2/go.mod h1:bpM9zsexUsJOIqFp4PB0xMtQw3W2RT4R9S+6guFLg1k=
 github.com/fatih/color v1.18.0 h1:S8gINlzdQ840/4pfAwic/ZE0djQEH3wM94VfqLTZcOM=
 github.com/fatih/color v1.18.0/go.mod h1:4FelSpRwEGDpQ12mAdzqdOukCy4u8WUtOY6lkT/6HfU=
 github.com/google/go-cmp v0.6.0 h1:ofyhxvXcZhMsU5ulbFiLKl/XBFqE1GSq7atu8tAmTRI=
@@ -28,6 +30,8 @@ github.com/samber/slog-common v0.19.0 h1:fNcZb8B2uOLooeYwFpAlKjkQTUafdjfqKcwcC89
 github.com/samber/slog-common v0.19.0/go.mod h1:dTz+YOU76aH007YUU0DffsXNsGFQRQllPQh9XyNoA3M=
 github.com/samber/slog-formatter v1.2.0 h1:gTSHm4CxyySyhcxRkzk21CSKbGCdZVipbRMhINkNtQU=
 github.com/samber/slog-formatter v1.2.0/go.mod h1:hgjhSd5Vf69XCOnVp0UW0QHCxJ8iDEm/qASjji6FNoI=
+github.com/samber/slog-formatter v1.2.2 h1:/JSzXcF0TUA1GRt/4g1AJc7h0ofyn7wx21oUjzpPh54=
+github.com/samber/slog-formatter v1.2.2/go.mod h1:zBYmoFkeV2LT3tyiaAehpJ1pOI+CtQz/xjXvbedx26Q=
 github.com/samber/slog-multi v1.6.0 h1:i1uBY+aaln6ljwdf7Nrt4Sys8Kk6htuYuXDHWJsHtZg=
 github.com/samber/slog-multi v1.6.0/go.mod h1:qTqzmKdPpT0h4PFsTN5rYRgLwom1v+fNGuIrl1Xnnts=
 github.com/stretchr/testify v1.11.1 h1:7s2iGBzp5EwR7/aIZr8ao5+dra3wiQyKjjFuvgVKu7U=
