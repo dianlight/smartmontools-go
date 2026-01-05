@@ -846,112 +846,117 @@ func (c *Client) RunSelfTestWithProgress(ctx context.Context, devicePath string,
 	if err := c.RunSelfTest(ctx, devicePath, testType); err != nil {
 		return fmt.Errorf("failed to start %s self-test: %w", testType, err)
 	}
+	go func() {
 
-	if callback != nil {
-		callback(0, fmt.Sprintf("%s self-test started", strings.ToUpper(string(testType[0]))+testType[1:]))
-	}
+		if callback != nil {
+			callback(0, fmt.Sprintf("%s self-test started", strings.ToUpper(string(testType[0]))+testType[1:]))
+		}
 
-	// Get expected duration based on test type
-	expectedMinutes := map[string]int{
-		"short":      2,
-		"long":       120,
-		"conveyance": 5,
-		"offline":    10,
-	}[testType]
+		// Get expected duration based on test type
+		expectedMinutes := map[string]int{
+			"short":      2,
+			"long":       120,
+			"conveyance": 5,
+			"offline":    10,
+		}[testType]
 
-	// Use duration from capabilities if available
-	if duration, ok := selfTestInfo.Durations[testType]; ok && duration > 0 {
-		expectedMinutes = duration
-	}
+		// Use duration from capabilities if available
+		if duration, ok := selfTestInfo.Durations[testType]; ok && duration > 0 {
+			expectedMinutes = duration
+		}
 
-	// Poll for completion
-	ticker := time.NewTicker(5 * time.Second)
-	defer ticker.Stop()
+		// Poll for completion
+		ticker := time.NewTicker(5 * time.Second)
+		defer ticker.Stop()
 
-	elapsed := 0
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-ticker.C:
-			elapsed += 5
+		elapsed := 0
+		for {
+			select {
+			case <-ctx.Done():
+				c.logHandler.WarnContext(ctx, "Self-test progress polling cancelled", "devicePath", devicePath, " error", ctx.Err())
+				return
+			case <-ticker.C:
+				elapsed += 5
 
-			// Check current status
-			currentInfo, err := c.GetSMARTInfo(ctx, devicePath)
-			if err != nil {
-				c.logHandler.WarnContext(ctx, "Failed to get SMART info during polling", "error", err)
-				continue
-			}
-
-			if currentInfo.AtaSmartData != nil && currentInfo.AtaSmartData.SelfTest != nil {
-				status := currentInfo.AtaSmartData.SelfTest.Status
-				if status != nil {
-					ls := strings.ToLower(status.String)
-					if strings.Contains(ls, "completed") || strings.Contains(ls, "aborted") || strings.Contains(ls, "interrupted") {
-						if callback != nil {
-							// Normalize message to expected phrasing
-							msg := "Self-test "
-							switch {
-							case strings.Contains(ls, "completed"):
-								msg += "completed"
-							case strings.Contains(ls, "aborted"):
-								msg += "aborted"
-							case strings.Contains(ls, "interrupted"):
-								msg += "interrupted"
-							default:
-								msg += status.String
-							}
-							callback(100, msg)
-						}
-						return nil
-					}
+				// Check current status
+				currentInfo, err := c.GetSMARTInfo(ctx, devicePath)
+				if err != nil {
+					c.logHandler.WarnContext(ctx, "Failed to get SMART info during polling", "error", err)
+					continue
 				}
 
-				// Try to get progress from Self-test execution status attribute (ID 231)
-				progress := -1
-				if currentInfo.AtaSmartData.Table != nil {
-					for _, attr := range currentInfo.AtaSmartData.Table {
-						if attr.ID == 231 {
-							progress = attr.Value
-							if progress > 100 {
-								progress = 100
-							}
-							break
-						}
-					}
-				}
-				if progress == -1 {
-					// Calculate progress based on elapsed time vs expected duration
-					progress = (elapsed * 100) / (expectedMinutes * 60)
-					if progress > 95 {
-						progress = 95 // Don't show 100% until actually completed
-					}
-				}
-
-				if callback != nil {
-					msg := "Self-test in progress"
+				if currentInfo.AtaSmartData != nil && currentInfo.AtaSmartData.SelfTest != nil {
+					status := currentInfo.AtaSmartData.SelfTest.Status
 					if status != nil {
-						msg = fmt.Sprintf("Self-test in progress (%s)", status.String)
+						ls := strings.ToLower(status.String)
+						if strings.Contains(ls, "completed") || strings.Contains(ls, "aborted") || strings.Contains(ls, "interrupted") {
+							if callback != nil {
+								// Normalize message to expected phrasing
+								msg := "Self-test "
+								switch {
+								case strings.Contains(ls, "completed"):
+									msg += "completed"
+								case strings.Contains(ls, "aborted"):
+									msg += "aborted"
+								case strings.Contains(ls, "interrupted"):
+									msg += "interrupted"
+								default:
+									msg += status.String
+								}
+								callback(100, msg)
+							}
+							return
+						}
 					}
-					callback(progress, msg)
-				}
-			} else {
-				// Fallback progress calculation
-				progress := (elapsed * 100) / (expectedMinutes * 60)
-				if progress > 95 {
-					progress = 95
-				}
-				if callback != nil {
-					callback(progress, "Self-test in progress")
-				}
-			}
 
-			// Timeout after 2x expected duration
-			if elapsed > expectedMinutes*120 {
-				return fmt.Errorf("self-test timed out after %d seconds", elapsed)
+					// Try to get progress from Self-test execution status attribute (ID 231)
+					progress := -1
+					if currentInfo.AtaSmartData.Table != nil {
+						for _, attr := range currentInfo.AtaSmartData.Table {
+							if attr.ID == 231 {
+								progress = attr.Value
+								if progress > 100 {
+									progress = 100
+								}
+								break
+							}
+						}
+					}
+					if progress == -1 {
+						// Calculate progress based on elapsed time vs expected duration
+						progress = (elapsed * 100) / (expectedMinutes * 60)
+						if progress > 95 {
+							progress = 95 // Don't show 100% until actually completed
+						}
+					}
+
+					if callback != nil {
+						msg := "Self-test in progress"
+						if status != nil {
+							msg = fmt.Sprintf("Self-test in progress (%s)", status.String)
+						}
+						callback(progress, msg)
+					}
+				} else {
+					// Fallback progress calculation
+					progress := (elapsed * 100) / (expectedMinutes * 60)
+					if progress > 95 {
+						progress = 95
+					}
+					if callback != nil {
+						callback(progress, "Self-test in progress")
+					}
+				}
+
+				// Timeout after 2x expected duration
+				if elapsed > expectedMinutes*120 {
+					c.logHandler.WarnContext(ctx, "self-test timed out after %d seconds", "elapsed", elapsed)
+					return
+				}
 			}
 		}
-	}
+	}()
+	return nil
 }
 
 // GetAvailableSelfTests returns the list of available self-test types and their durations for a device
