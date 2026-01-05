@@ -25,7 +25,7 @@ func TestGetSMARTInfoWithNoCheckStandby(t *testing.T) {
 
 	commander := &mockCommander{
 		cmds: map[string]*mockCmd{
-			"/usr/sbin/smartctl --nocheck=standby -a -j /dev/sda": {
+			"/usr/sbin/smartctl -a -j --nocheck=standby /dev/sda": {
 				output: []byte(mockJSON),
 			},
 		},
@@ -45,7 +45,7 @@ func TestGetSMARTInfoWithNoCheckStandby(t *testing.T) {
 func TestCheckHealthWithNoCheckStandby(t *testing.T) {
 	commander := &mockCommander{
 		cmds: map[string]*mockCmd{
-			"/usr/sbin/smartctl --nocheck=standby -H /dev/sda": {
+			"/usr/sbin/smartctl -H --nocheck=standby /dev/sda": {
 				output: []byte("SMART overall-health self-assessment test result: PASSED"),
 			},
 		},
@@ -67,7 +67,7 @@ func TestGetDeviceInfoWithNoCheckStandby(t *testing.T) {
 
 	commander := &mockCommander{
 		cmds: map[string]*mockCmd{
-			"/usr/sbin/smartctl --nocheck=standby -i -j /dev/sda": {
+			"/usr/sbin/smartctl -i -j --nocheck=standby /dev/sda": {
 				output: []byte(mockJSON),
 			},
 		},
@@ -93,7 +93,7 @@ func TestGetAvailableSelfTestsWithNoCheckStandby(t *testing.T) {
 
 	commander := &mockCommander{
 		cmds: map[string]*mockCmd{
-			"/usr/sbin/smartctl --nocheck=standby -c -j /dev/sda": {
+			"/usr/sbin/smartctl -c -j --nocheck=standby /dev/sda": {
 				output: []byte(mockJSON),
 			},
 		},
@@ -141,7 +141,7 @@ func TestGetSMARTInfoWithCachedATADeviceType(t *testing.T) {
 
 	commander := &mockCommander{
 		cmds: map[string]*mockCmd{
-			"/usr/sbin/smartctl -d sat --nocheck=standby -a -j /dev/sda": {output: []byte(mockJSON)},
+			"/usr/sbin/smartctl -a -j --nocheck=standby -d sat /dev/sda": {output: []byte(mockJSON)},
 		},
 	}
 	client, _ := NewClient(WithSmartctlPath("/usr/sbin/smartctl"), WithCommander(commander))
@@ -166,7 +166,7 @@ func TestGetSMARTInfoWithCachedNVMeDeviceType(t *testing.T) {
 
 	commander := &mockCommander{
 		cmds: map[string]*mockCmd{
-			"/usr/sbin/smartctl -d nvme -a -j /dev/nvme0n1": {output: []byte(mockJSON)},
+			"/usr/sbin/smartctl -a -j -d nvme /dev/nvme0n1": {output: []byte(mockJSON)},
 		},
 	}
 	client, _ := NewClient(WithSmartctlPath("/usr/sbin/smartctl"), WithCommander(commander))
