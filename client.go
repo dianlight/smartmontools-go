@@ -391,21 +391,34 @@ func (c *Client) GetSMARTInfo(ctx context.Context, devicePath string) (*SMARTInf
 }
 
 func checkSmartStatus(sMARTInfo *SMARTInfo) SmartStatus {
+	damaged := false
+	critical := false
+	// Populate SmartStatus Damaged and Critical
+	if sMARTInfo.Smartctl != nil {
+		damaged = (sMARTInfo.Smartctl.ExitStatus & 0x00000100) != 0
+		critical = (sMARTInfo.Smartctl.ExitStatus & 0x00001000) != 0
+	}
 	// Popolate SmartStatus Running
 	if sMARTInfo.AtaSmartData != nil && sMARTInfo.AtaSmartData.SelfTest != nil {
 		return SmartStatus{
-			Running: sMARTInfo.AtaSmartData.SelfTest.Status.Value >= 240 && sMARTInfo.AtaSmartData.SelfTest.Status.Value <= 253,
-			Passed:  sMARTInfo.SmartStatus.Passed,
+			Running:  sMARTInfo.AtaSmartData.SelfTest.Status.Value >= 240 && sMARTInfo.AtaSmartData.SelfTest.Status.Value <= 253,
+			Passed:   sMARTInfo.SmartStatus.Passed,
+			Damaged:  damaged,
+			Critical: critical,
 		}
 	} else if sMARTInfo.NvmeSmartTestLog != nil {
 		return SmartStatus{
-			Running: sMARTInfo.NvmeSmartTestLog.CurrentOpeation != nil && *sMARTInfo.NvmeSmartTestLog.CurrentOpeation != 0,
-			Passed:  sMARTInfo.SmartStatus.Passed,
+			Running:  sMARTInfo.NvmeSmartTestLog.CurrentOpeation != nil && *sMARTInfo.NvmeSmartTestLog.CurrentOpeation != 0,
+			Passed:   sMARTInfo.SmartStatus.Passed,
+			Damaged:  damaged,
+			Critical: critical,
 		}
 	} else {
 		return SmartStatus{
-			Running: false,
-			Passed:  sMARTInfo.SmartStatus.Passed,
+			Running:  false,
+			Passed:   sMARTInfo.SmartStatus.Passed,
+			Damaged:  damaged,
+			Critical: critical,
 		}
 	}
 }

@@ -73,8 +73,10 @@ type SMARTInfo struct {
 
 // SmartStatus represents the overall SMART health status
 type SmartStatus struct {
-	Running bool `json:"running"`
-	Passed  bool `json:"passed"`
+	Running  bool `json:"running"`
+	Passed   bool `json:"passed"`
+	Damaged  bool `json:"damaged,omitempty"`
+	Critical bool `json:"critical,omitempty"`
 }
 
 // SmartSupport represents SMART availability and enablement status.
