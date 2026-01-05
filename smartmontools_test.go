@@ -1153,7 +1153,7 @@ loop:
 
 	assert.True(t, progressCalled, "Expected progress callback to be called")
 	assert.Equal(t, 100, finalProgress, "Expected final progress 100")
-	assert.Equal(t, "Self-test completed", finalStatus)
+	assert.Equal(t, "completed", finalStatus)
 }
 
 func TestGetAvailableSelfTestsATA(t *testing.T) {

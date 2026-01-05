@@ -37,6 +37,11 @@ type NvmeSmartHealth struct {
 	TemperatureSensors   []int `json:"temperature_sensors,omitempty"`
 }
 
+type NvmeSmartTestLog struct {
+	CurrentOpeation   *int `json:"current_operation,omitempty"`
+	CurrentCompletion *int `json:"current_completion,omitempty"`
+}
+
 // UserCapacity represents storage device capacity information
 type UserCapacity struct {
 	Blocks int64 `json:"blocks"`
@@ -58,6 +63,7 @@ type SMARTInfo struct {
 	SmartSupport               *SmartSupport               `json:"smart_support,omitempty"`
 	AtaSmartData               *AtaSmartData               `json:"ata_smart_data,omitempty"`
 	NvmeSmartHealth            *NvmeSmartHealth            `json:"nvme_smart_health_information_log,omitempty"`
+	NvmeSmartTestLog           *NvmeSmartTestLog           `json:"nvme_smart_test_log,omitempty"`
 	NvmeControllerCapabilities *NvmeControllerCapabilities `json:"nvme_controller_capabilities,omitempty"`
 	Temperature                *Temperature                `json:"temperature,omitempty"`
 	PowerOnTime                *PowerOnTime                `json:"power_on_time,omitempty"`
@@ -67,7 +73,8 @@ type SMARTInfo struct {
 
 // SmartStatus represents the overall SMART health status
 type SmartStatus struct {
-	Passed bool `json:"passed"`
+	Running bool `json:"running"`
+	Passed  bool `json:"passed"`
 }
 
 // SmartSupport represents SMART availability and enablement status.
@@ -86,13 +93,14 @@ type AtaSmartData struct {
 
 // StatusField represents a status field that can be either a simple string or a complex object
 type StatusField struct {
-	Value  int    `json:"value"`
-	String string `json:"string"`
-	Passed *bool  `json:"passed,omitempty"`
+	Value            int    `json:"value"`
+	String           string `json:"string"`
+	Passed           *bool  `json:"passed,omitempty"`
+	RemainingPercent *int   `json:"remaining_percent,omitempty"`
 }
 
 // UnmarshalJSON allows StatusField to be parsed from either a JSON string
-// (e.g., "completed") or a structured object with fields {value, string, passed}.
+// (e.g., "completed") or a structured object with fields {value, string, passed, remaining_percent}.
 func (s *StatusField) UnmarshalJSON(data []byte) error {
 	// If the JSON value starts with a quote, it's a simple string
 	if len(data) > 0 && data[0] == '"' {
@@ -114,6 +122,7 @@ func (s *StatusField) UnmarshalJSON(data []byte) error {
 	s.Value = tmp.Value
 	s.String = tmp.String
 	s.Passed = tmp.Passed
+	s.RemainingPercent = tmp.RemainingPercent
 	return nil
 }
 

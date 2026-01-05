@@ -235,6 +235,7 @@ func (c *Client) GetSMARTInfo(ctx context.Context, devicePath string) (*SMARTInf
 							c.setCachedDeviceType(devicePath, smartInfo.Device.Type)
 						}
 						smartInfo.DiskType = determineDiskType(&smartInfo)
+						smartInfo.SmartStatus = checkSmartStatus(&smartInfo)
 						return &smartInfo, nil
 					}
 				}
@@ -342,6 +343,7 @@ func (c *Client) GetSMARTInfo(ctx context.Context, devicePath string) (*SMARTInf
 				}
 
 				smartInfo.DiskType = determineDiskType(&smartInfo)
+				smartInfo.SmartStatus = checkSmartStatus(&smartInfo)
 				// If device name is empty after USB bridge fallback, SMART is likely not supported
 				if smartInfo.Device.Name == "" {
 					return &smartInfo, fmt.Errorf("SMART Not Supported")
@@ -382,8 +384,30 @@ func (c *Client) GetSMARTInfo(ctx context.Context, devicePath string) (*SMARTInf
 
 	// Determine disk type based on rotation rate and device type
 	smartInfo.DiskType = determineDiskType(&smartInfo)
+	// Populate SmartStatus.Running field based on test status
+	smartInfo.SmartStatus = checkSmartStatus(&smartInfo)
 
 	return &smartInfo, nil
+}
+
+func checkSmartStatus(sMARTInfo *SMARTInfo) SmartStatus {
+	// Popolate SmartStatus Running
+	if sMARTInfo.AtaSmartData != nil && sMARTInfo.AtaSmartData.SelfTest != nil {
+		return SmartStatus{
+			Running: sMARTInfo.AtaSmartData.SelfTest.Status.Value >= 240 && sMARTInfo.AtaSmartData.SelfTest.Status.Value <= 253,
+			Passed:  sMARTInfo.SmartStatus.Passed,
+		}
+	} else if sMARTInfo.NvmeSmartTestLog != nil {
+		return SmartStatus{
+			Running: sMARTInfo.NvmeSmartTestLog.CurrentOpeation != nil && *sMARTInfo.NvmeSmartTestLog.CurrentOpeation != 0,
+			Passed:  sMARTInfo.SmartStatus.Passed,
+		}
+	} else {
+		return SmartStatus{
+			Running: false,
+			Passed:  sMARTInfo.SmartStatus.Passed,
+		}
+	}
 }
 
 // CheckHealth checks if a device is healthy according to SMART
@@ -577,24 +601,46 @@ func (c *Client) RunSelfTestWithProgress(ctx context.Context, devicePath string,
 					continue
 				}
 
+				// Using SMART infor remaining_percent if available
+				if info.AtaSmartData.SelfTest != nil && info.AtaSmartData.SelfTest.Status.RemainingPercent != nil {
+					remaining := *info.AtaSmartData.SelfTest.Status.RemainingPercent
+					calculatedProgress := 100 - remaining
+					if calculatedProgress > progress {
+						progress = calculatedProgress
+					}
+				}
+
 				// Check ATA self-test status
 				if info.AtaSmartData != nil && info.AtaSmartData.SelfTest != nil {
 					if info.AtaSmartData.SelfTest.Status != nil {
-						status := info.AtaSmartData.SelfTest.Status.String
-						if strings.Contains(status, "completed") {
+
+						if callback != nil {
+							callback(progress, info.AtaSmartData.SelfTest.Status.String)
+						}
+
+						if info.AtaSmartData.SelfTest.Status.Value <= 240 || progress >= 100 {
+							// Test complete
 							if callback != nil {
-								callback(100, "Self-test completed")
+								callback(100, info.AtaSmartData.SelfTest.Status.String)
 							}
 							return
-						} else if strings.Contains(status, "aborted") || strings.Contains(status, "failed") {
-							if callback != nil {
-								callback(progress, fmt.Sprintf("Test %s", status))
-							}
-							return
-						} else if strings.Contains(status, "in progress") {
-							if callback != nil {
-								callback(progress, "Test in progress")
-							}
+						}
+
+					}
+				}
+
+				// For NVMe, check self-test log
+				if info.NvmeSmartTestLog != nil {
+					if info.NvmeSmartTestLog.CurrentOpeation != nil && *info.NvmeSmartTestLog.CurrentOpeation == 0 {
+						// No current operation means test is complete
+						if callback != nil {
+							callback(100, "Test completed")
+						}
+						return
+					} else if info.NvmeSmartTestLog.CurrentCompletion != nil {
+						progress = *info.NvmeSmartTestLog.CurrentCompletion
+						if callback != nil {
+							callback(progress, "Test in progress")
 						}
 					}
 				}
