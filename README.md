@@ -270,6 +270,7 @@ When building monitoring applications that periodically check SMART status, it's
 // DON'T: This queries the disk on every call
 ticker := time.NewTicker(10 * time.Second)
 for range ticker.C {
+    // Error handling omitted for brevity in this anti-pattern example
     support, _ := client.IsSMARTSupported(ctx, "/dev/sda") // Disk access!
     if support.Enabled {
         // ... monitor SMART data

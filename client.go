@@ -788,7 +788,11 @@ func (c *Client) GetAvailableSelfTests(ctx context.Context, devicePath string) (
 //	if err := client.EnableSMART(ctx, devicePath); err != nil {
 //	    return err
 //	}
-//	info, _ = client.GetSMARTInfo(ctx, devicePath) // Refresh cache
+//	// Refresh cache after state change
+//	info, err = client.GetSMARTInfo(ctx, devicePath)
+//	if err != nil {
+//	    return err
+//	}
 func (c *Client) GetSMARTSupportFromInfo(smartInfo *SMARTInfo) *SmartSupport {
 	return c.isSMARTSupported(smartInfo)
 }
