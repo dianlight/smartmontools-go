@@ -11,7 +11,7 @@ import (
 // TestCheckSmartStatus_ATARunning tests checkSmartStatus with ATA device where self-test is running
 func TestCheckSmartStatus_ATARunning(t *testing.T) {
 	smartInfo := &SMARTInfo{
-		SmartStatus: SmartStatus{Passed: true},
+		SmartStatus: &SmartStatus{Passed: true},
 		AtaSmartData: &AtaSmartData{
 			SelfTest: &SelfTest{
 				Status: &StatusField{
@@ -30,7 +30,7 @@ func TestCheckSmartStatus_ATARunning(t *testing.T) {
 // TestCheckSmartStatus_ATANotRunning tests checkSmartStatus with ATA device where self-test is not running
 func TestCheckSmartStatus_ATANotRunning(t *testing.T) {
 	smartInfo := &SMARTInfo{
-		SmartStatus: SmartStatus{Passed: true},
+		SmartStatus: &SmartStatus{Passed: true},
 		AtaSmartData: &AtaSmartData{
 			SelfTest: &SelfTest{
 				Status: &StatusField{
@@ -63,7 +63,7 @@ func TestCheckSmartStatus_ATABoundaryValues(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			smartInfo := &SMARTInfo{
-				SmartStatus: SmartStatus{Passed: true},
+				SmartStatus: &SmartStatus{Passed: true},
 				AtaSmartData: &AtaSmartData{
 					SelfTest: &SelfTest{
 						Status: &StatusField{
@@ -85,7 +85,7 @@ func TestCheckSmartStatus_ATABoundaryValues(t *testing.T) {
 func TestCheckSmartStatus_NVMeRunning(t *testing.T) {
 	currentOp := 1 // Non-zero means test is running
 	smartInfo := &SMARTInfo{
-		SmartStatus: SmartStatus{Passed: true},
+		SmartStatus: &SmartStatus{Passed: true},
 		NvmeSmartTestLog: &NvmeSmartTestLog{
 			CurrentOpeation: &currentOp,
 		},
@@ -100,7 +100,7 @@ func TestCheckSmartStatus_NVMeRunning(t *testing.T) {
 func TestCheckSmartStatus_NVMeNotRunning(t *testing.T) {
 	currentOp := 0 // Zero means no test is running
 	smartInfo := &SMARTInfo{
-		SmartStatus: SmartStatus{Passed: true},
+		SmartStatus: &SmartStatus{Passed: true},
 		NvmeSmartTestLog: &NvmeSmartTestLog{
 			CurrentOpeation: &currentOp,
 		},
@@ -114,7 +114,7 @@ func TestCheckSmartStatus_NVMeNotRunning(t *testing.T) {
 // TestCheckSmartStatus_NVMeNilCurrentOperation tests checkSmartStatus with nil CurrentOpeation
 func TestCheckSmartStatus_NVMeNilCurrentOperation(t *testing.T) {
 	smartInfo := &SMARTInfo{
-		SmartStatus: SmartStatus{Passed: true},
+		SmartStatus: &SmartStatus{Passed: true},
 		NvmeSmartTestLog: &NvmeSmartTestLog{
 			CurrentOpeation: nil,
 		},
@@ -128,7 +128,7 @@ func TestCheckSmartStatus_NVMeNilCurrentOperation(t *testing.T) {
 // TestCheckSmartStatus_NoTestData tests checkSmartStatus with no test data
 func TestCheckSmartStatus_NoTestData(t *testing.T) {
 	smartInfo := &SMARTInfo{
-		SmartStatus: SmartStatus{Passed: false},
+		SmartStatus: &SmartStatus{Passed: false},
 	}
 
 	status := checkSmartStatus(smartInfo)
@@ -140,7 +140,7 @@ func TestCheckSmartStatus_NoTestData(t *testing.T) {
 func TestCheckSmartStatus_PreferATA(t *testing.T) {
 	currentOp := 1
 	smartInfo := &SMARTInfo{
-		SmartStatus: SmartStatus{Passed: true},
+		SmartStatus: &SmartStatus{Passed: true},
 		AtaSmartData: &AtaSmartData{
 			SelfTest: &SelfTest{
 				Status: &StatusField{

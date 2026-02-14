@@ -1264,7 +1264,7 @@ func TestIsSMARTSupportedATA(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, supportInfo)
 	assert.True(t, supportInfo.Available, "Expected SMART to be supported for ATA device")
-	assert.True(t, supportInfo.Enabled, "Expected SMART to be enabled for ATA device")
+	assert.True(t, supportInfo.Enabled, "Expected SMART enabled state to be unknown without smart_support")
 }
 
 func TestIsSMARTSupportedNVMe(t *testing.T) {
@@ -1285,7 +1285,7 @@ func TestIsSMARTSupportedNVMe(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, supportInfo)
 	assert.True(t, supportInfo.Available, "Expected SMART to be supported for NVMe device")
-	assert.True(t, supportInfo.Enabled, "Expected SMART to be enabled for NVMe device")
+	assert.True(t, supportInfo.Enabled, "Expected SMART enabled state to be unknown without smart_support")
 }
 
 func TestIsSMARTSupportedNVMeWithSmartSupport(t *testing.T) {
@@ -1373,9 +1373,19 @@ func TestEnableSMARTError(t *testing.T) {
 }
 
 func TestDisableSMART(t *testing.T) {
+	mockJSON := `{
+		"device": {"name": "/dev/sda", "type": "sat"},
+		"model_name": "KINGSTON SV300S37A240G",
+		"serial_number": "50026B77560145CF",
+		"ata_smart_data": {
+			"self_test": {"status": {"value": 0}}
+		},
+		"smart_status": {"passed": true}
+	}`
 	commander := &mockCommander{
 		cmds: map[string]*mockCmd{
-			"/usr/sbin/smartctl -s off /dev/sda": {},
+			"/usr/sbin/smartctl -a -j --nocheck=standby /dev/sda": {output: []byte(mockJSON)},
+			"/usr/sbin/smartctl -s off /dev/sda":                  {},
 		},
 	}
 	client, _ := NewClient(WithSmartctlPath("/usr/sbin/smartctl"), WithCommander(commander))
@@ -1385,15 +1395,47 @@ func TestDisableSMART(t *testing.T) {
 }
 
 func TestDisableSMARTError(t *testing.T) {
+	mockJSON := `{
+		"device": {"name": "/dev/sda", "type": "sat"},
+		"model_name": "KINGSTON SV300S37A240G",
+		"serial_number": "50026B77560145CF",
+		"ata_smart_data": {
+			"self_test": {"status": {"value": 0}}
+		},
+		"smart_status": {"passed": true}
+	}`
 	commander := &mockCommander{
 		cmds: map[string]*mockCmd{
-			"/usr/sbin/smartctl -s off /dev/sda": {err: errors.New("command failed")},
+			"/usr/sbin/smartctl -a -j --nocheck=standby /dev/sda": {output: []byte(mockJSON)},
+			"/usr/sbin/smartctl -s off /dev/sda":                  {err: errors.New("command failed")},
 		},
 	}
 	client, _ := NewClient(WithSmartctlPath("/usr/sbin/smartctl"), WithCommander(commander))
 
 	err := client.DisableSMART(context.Background(), "/dev/sda")
 	assert.Error(t, err)
+}
+
+func TestDisableSMARTNVMe(t *testing.T) {
+	mockJSON := `{
+		"device": {"name": "/dev/nvme0n1", "type": "nvme"},
+		"model_name": "Samsung SSD 970 EVO",
+		"serial_number": "S5H9NJ0N123456",
+		"nvme_smart_health_information_log": {
+			"temperature": 35
+		},
+		"smart_status": {"passed": true}
+	}`
+	commander := &mockCommander{
+		cmds: map[string]*mockCmd{
+			"/usr/sbin/smartctl -a -j --nocheck=standby /dev/nvme0n1": {output: []byte(mockJSON)},
+		},
+	}
+	client, _ := NewClient(WithSmartctlPath("/usr/sbin/smartctl"), WithCommander(commander))
+
+	err := client.DisableSMART(context.Background(), "/dev/nvme0n1")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "NVMe")
 }
 
 func TestAbortSelfTest(t *testing.T) {

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os/exec"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -391,7 +392,12 @@ func (c *Client) GetSMARTInfo(ctx context.Context, devicePath string) (*SMARTInf
 	return &smartInfo, nil
 }
 
-func checkSmartStatus(sMARTInfo *SMARTInfo) SmartStatus {
+func checkSmartStatus(sMARTInfo *SMARTInfo) *SmartStatus {
+
+	if sMARTInfo.SmartStatus == nil {
+		sMARTInfo.SmartStatus = &SmartStatus{}
+	}
+
 	damaged := false
 	critical := false
 	// Populate SmartStatus Damaged and Critical
@@ -401,23 +407,30 @@ func checkSmartStatus(sMARTInfo *SMARTInfo) SmartStatus {
 	}
 	// Popolate SmartStatus Running
 	if sMARTInfo.AtaSmartData != nil && sMARTInfo.AtaSmartData.SelfTest != nil {
-		return SmartStatus{
+		return &SmartStatus{
 			Running:  sMARTInfo.AtaSmartData.SelfTest.Status.Value >= 240 && sMARTInfo.AtaSmartData.SelfTest.Status.Value <= 253,
 			Passed:   sMARTInfo.SmartStatus.Passed,
 			Damaged:  damaged,
 			Critical: critical,
 		}
 	} else if sMARTInfo.NvmeSmartTestLog != nil {
-		return SmartStatus{
+		return &SmartStatus{
 			Running:  sMARTInfo.NvmeSmartTestLog.CurrentOpeation != nil && *sMARTInfo.NvmeSmartTestLog.CurrentOpeation != 0,
 			Passed:   sMARTInfo.SmartStatus.Passed,
 			Damaged:  damaged,
 			Critical: critical,
 		}
-	} else {
-		return SmartStatus{
+	} else if sMARTInfo.SmartStatus != nil {
+		return &SmartStatus{
 			Running:  false,
 			Passed:   sMARTInfo.SmartStatus.Passed,
+			Damaged:  damaged,
+			Critical: critical,
+		}
+	} else {
+		return &SmartStatus{
+			Running:  false,
+			Passed:   false,
 			Damaged:  damaged,
 			Critical: critical,
 		}
@@ -558,14 +571,7 @@ func (c *Client) RunSelfTestWithProgress(ctx context.Context, devicePath string,
 	}
 
 	// Check if the requested test is available
-	available := false
-	for _, t := range selfTestInfo.Available {
-		if t == testType {
-			available = true
-			break
-		}
-	}
-	if !available {
+	if !slices.Contains(selfTestInfo.Available, testType) {
 		return fmt.Errorf("test type %s is not available for this device", testType)
 	}
 
@@ -801,7 +807,10 @@ func (c *Client) GetSMARTSupportFromInfo(smartInfo *SMARTInfo) *SmartSupport {
 // This is an internal helper that extracts SMART support status from SMARTInfo.
 func (c *Client) isSMARTSupported(smartInfo *SMARTInfo) *SmartSupport {
 
-	supportInfo := &SmartSupport{}
+	supportInfo := &SmartSupport{
+		Available: false,
+		Enabled:   false,
+	}
 
 	// Check if smartctl provided smart_support field (both ATA and NVMe devices)
 	if smartInfo.SmartSupport != nil {
@@ -882,10 +891,22 @@ func (c *Client) EnableSMART(ctx context.Context, devicePath string) error {
 }
 
 // DisableSMART disables SMART monitoring on a device
+// Note: NVMe devices do not support disabling SMART, an error will be returned
 func (c *Client) DisableSMART(ctx context.Context, devicePath string) error {
 	if ctx == nil {
 		ctx = c.defaultCtx
 	}
+
+	// Check if device is NVMe - SMART cannot be disabled on NVMe devices
+	info, err := c.GetSMARTInfo(ctx, devicePath)
+	if err != nil {
+		return fmt.Errorf("failed to check device type: %w", err)
+	}
+
+	if determineDiskType(info) == "NVMe" {
+		return fmt.Errorf("cannot disable SMART: NVMe devices do not support SMART disable operation")
+	}
+
 	cmd := c.commander.Command(ctx, c.logHandler, c.smartctlPath, "-s", "off", devicePath)
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("failed to disable SMART: %w", err)
