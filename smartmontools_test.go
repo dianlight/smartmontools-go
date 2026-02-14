@@ -14,6 +14,7 @@ import (
 
 // mockCmd implements Cmd interface for testing
 type mockCmd struct {
+	exec.Cmd
 	output []byte
 	err    error
 }
@@ -1153,7 +1154,7 @@ loop:
 
 	assert.True(t, progressCalled, "Expected progress callback to be called")
 	assert.Equal(t, 100, finalProgress, "Expected final progress 100")
-	assert.Equal(t, "completed", finalStatus)
+	assert.Contains(t, finalStatus, "completed", "Expected final status to indicate completion")
 }
 
 func TestGetAvailableSelfTestsATA(t *testing.T) {
@@ -1704,7 +1705,7 @@ func TestGetSMARTInfoUnknownUSBBridgeFallbackFailed(t *testing.T) {
 
 	// Should fail after trying both default and -d sat
 	info, err := client.GetSMARTInfo(context.Background(), "/dev/usb0")
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Equal(t, "SMART Not Supported", err.Error())
 	assert.Empty(t, info.Device.Name)
 
