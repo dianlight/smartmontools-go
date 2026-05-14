@@ -30,7 +30,8 @@ func TestResolveCtx_NilReturnsDefault(t *testing.T) {
 	sentinel := context.WithValue(context.Background(), ctxKey{}, "sentinel")
 	c.defaultCtx = sentinel
 
-	got := c.resolveCtx(nil)
+	var nilCtx context.Context
+	got := c.resolveCtx(nilCtx)
 	assert.Equal(t, sentinel, got, "nil ctx should fall back to defaultCtx")
 }
 

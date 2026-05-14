@@ -1,5 +1,7 @@
 [tools]
 go = "1.26"
+"go:honnef.co/go/tools/cmd/staticcheck" = "latest"
+"go:github.com/princjef/gomarkdoc/cmd/gomarkdoc" = "latest"
 
 [tasks.test]
 description = "Run unit tests for all packages"
@@ -32,29 +34,12 @@ description = "Run go vet on the project"
 run = "go vet ./..."
 
 [tasks.lint]
-description = "Run staticcheck if available"
-run = '''
-if command -v staticcheck >/dev/null 2>&1; then
-  staticcheck ./...
-else
-  echo "staticcheck not installed; skip (install: go install honnef.co/go/tools/cmd/staticcheck@latest)"
-fi
-'''
+description = "Run staticcheck"
+run = "staticcheck ./..."
 
 [tasks.ci-lint]
 description = "Run CI linting: fmt-check, vet, staticcheck"
-depends = ["fmt-check", "vet"]
-run = '''
-GOBIN=$(go env GOBIN)
-if [ -z "$GOBIN" ]; then GOBIN=$(go env GOPATH)/bin; fi
-if ! command -v staticcheck >/dev/null 2>&1 && [ ! -x "$GOBIN/staticcheck" ]; then
-  echo "staticcheck not found — installing to $GOBIN..."
-  go install honnef.co/go/tools/cmd/staticcheck@latest
-  if [ ! -x "$GOBIN/staticcheck" ]; then echo "staticcheck installation failed"; exit 1; fi
-fi
-echo "Running staticcheck..."
-"$GOBIN/staticcheck" ./...
-'''
+depends = ["fmt-check", "vet", "lint"]
 
 [tasks.ci]
 description = "Run all CI checks (tidy, mod-download, ci-lint, test)"
@@ -76,17 +61,7 @@ run = "go run ./"
 
 [tasks.apidoc]
 description = "Generate API documentation (APIDOC.md)"
-run = '''
-GOBIN=$(go env GOBIN)
-if [ -z "$GOBIN" ]; then GOBIN=$(go env GOPATH)/bin; fi
-GOMARKDOC=$(command -v gomarkdoc 2>/dev/null || echo "$GOBIN/gomarkdoc")
-if [ -x "$GOMARKDOC" ]; then
-  "$GOMARKDOC" -o APIDOC.md .
-else
-  echo "gomarkdoc not installed; install: go install github.com/princjef/gomarkdoc/cmd/gomarkdoc@latest"
-  exit 1
-fi
-'''
+run = "gomarkdoc -o APIDOC.md ."
 
 [tasks.release]
 description = "Create and push a release tag (VERSION_TYPE=major|minor|patch)"
