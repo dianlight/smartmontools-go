@@ -85,6 +85,7 @@ type SmartClient interface {
 	RunSelfTest(ctx context.Context, devicePath string, testType string) error
 	RunSelfTestWithProgress(ctx context.Context, devicePath string, testType string, callback ProgressCallback) error
 	GetAvailableSelfTests(ctx context.Context, devicePath string) (*SelfTestInfo, error)
+	GetAvailableSelfTestsFromInfo(smartInfo *SMARTInfo) *SelfTestInfo
 	IsSMARTSupported(ctx context.Context, devicePath string) (*SmartSupport, error)
 	GetSMARTSupportFromInfo(smartInfo *SMARTInfo) *SmartSupport
 	EnableSMART(ctx context.Context, devicePath string) error
@@ -246,9 +247,14 @@ func (c *Client) GetSMARTInfo(ctx context.Context, devicePath string) (*SMARTInf
 					var smartInfo SMARTInfo
 					if jsonErr := json.Unmarshal(output, &smartInfo); jsonErr == nil {
 						smartInfo.InStandby = true
-						// Cache device type if not cached yet
-						if smartInfo.Device.Type != "" && !isATA {
-							c.setCachedDeviceType(devicePath, smartInfo.Device.Type)
+						// Cache the device type returned by the standby response.
+						// The previous !isATA guard was wrong: isATA defaults to true
+						// when no type is cached yet (the common first-contact case),
+						// which silently prevented ATA/SAT devices from being cached.
+						if smartInfo.Device.Type != "" {
+							if _, cached := c.getCachedDeviceType(devicePath); !cached {
+								c.setCachedDeviceType(devicePath, smartInfo.Device.Type)
+							}
 						}
 						smartInfo.DiskType = determineDiskType(&smartInfo)
 						smartInfo.SmartStatus = checkSmartStatus(&smartInfo)
@@ -429,7 +435,7 @@ func checkSmartStatus(sMARTInfo *SMARTInfo) *SmartStatus {
 		critical = (sMARTInfo.Smartctl.ExitStatus & 0x00001000) != 0
 	}
 	// Popolate SmartStatus Running
-	if sMARTInfo.AtaSmartData != nil && sMARTInfo.AtaSmartData.SelfTest != nil {
+	if sMARTInfo.AtaSmartData != nil && sMARTInfo.AtaSmartData.SelfTest != nil && sMARTInfo.AtaSmartData.SelfTest.Status != nil {
 		return &SmartStatus{
 			Running:  sMARTInfo.AtaSmartData.SelfTest.Status.Value >= 240 && sMARTInfo.AtaSmartData.SelfTest.Status.Value <= 253,
 			Passed:   sMARTInfo.SmartStatus.Passed,
@@ -769,17 +775,81 @@ func (c *Client) GetAvailableSelfTests(ctx context.Context, devicePath string) (
 		}
 	}
 
-	// NVMe
-	if caps.NvmeControllerCapabilities != nil && caps.NvmeControllerCapabilities.SelfTest {
-		info.Available = append(info.Available, "short")
-		// Durations not specified for NVMe in -c output
-	}
-	if caps.NvmeOptionalAdminCommands != nil && caps.NvmeOptionalAdminCommands.SelfTest {
+	// NVMe - combine both capability fields into a single check to avoid
+	// appending "short" twice when both fields independently report support.
+	if (caps.NvmeControllerCapabilities != nil && caps.NvmeControllerCapabilities.SelfTest) ||
+		(caps.NvmeOptionalAdminCommands != nil && caps.NvmeOptionalAdminCommands.SelfTest) {
 		info.Available = append(info.Available, "short")
 		// Durations not specified for NVMe in -c output
 	}
 
 	return info, nil
+}
+
+// GetAvailableSelfTestsFromInfo extracts available self-test types and their durations
+// from a SMARTInfo struct without performing additional disk I/O. Applications that
+// already hold a cached SMARTInfo (from GetSMARTInfo) should use this method instead of
+// GetAvailableSelfTests to avoid an extra smartctl -c disk query.
+//
+// Note: NVMe detection uses NvmeControllerCapabilities, which is present in -a output.
+// The NvmeOptionalAdminCommands field (available only via -c) is not stored in SMARTInfo,
+// so NVMe self-test capability detection may be incomplete for some controllers.
+//
+// Example usage:
+//
+//	// Get and cache SMART info once
+//	info, err := client.GetSMARTInfo(ctx, devicePath)
+//	if err != nil {
+//	    return err
+//	}
+//
+//	// Extract self-test types without another disk query
+//	selfTests := client.GetAvailableSelfTestsFromInfo(info)
+//	for _, testType := range selfTests.Available {
+//	    fmt.Printf("Test: %s (%d min)\n", testType, selfTests.Durations[testType])
+//	}
+func (c *Client) GetAvailableSelfTestsFromInfo(smartInfo *SMARTInfo) *SelfTestInfo {
+	info := &SelfTestInfo{
+		Available: []string{},
+		Durations: make(map[string]int),
+	}
+	if smartInfo == nil {
+		return info
+	}
+
+	// ATA capabilities
+	if smartInfo.AtaSmartData != nil && smartInfo.AtaSmartData.Capabilities != nil {
+		caps := smartInfo.AtaSmartData.Capabilities
+		if caps.SelfTestsSupported {
+			info.Available = append(info.Available, "short", "long")
+		}
+		if caps.ConveyanceSelfTestSupported {
+			info.Available = append(info.Available, "conveyance")
+		}
+		if caps.ExecOfflineImmediate {
+			info.Available = append(info.Available, "offline")
+		}
+		if smartInfo.AtaSmartData.SelfTest != nil && smartInfo.AtaSmartData.SelfTest.PollingMinutes != nil {
+			pm := smartInfo.AtaSmartData.SelfTest.PollingMinutes
+			if pm.Short > 0 {
+				info.Durations["short"] = pm.Short
+			}
+			if pm.Extended > 0 {
+				info.Durations["long"] = pm.Extended
+			}
+			if pm.Conveyance > 0 {
+				info.Durations["conveyance"] = pm.Conveyance
+			}
+		}
+	}
+
+	// NVMe: NvmeControllerCapabilities is populated in -a output
+	if smartInfo.NvmeControllerCapabilities != nil && smartInfo.NvmeControllerCapabilities.SelfTest {
+		info.Available = append(info.Available, "short")
+		// Durations not reported by NVMe devices
+	}
+
+	return info
 }
 
 // GetSMARTSupportFromInfo extracts SMART support status from a SMARTInfo struct.

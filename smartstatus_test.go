@@ -159,6 +159,25 @@ func TestCheckSmartStatus_PreferATA(t *testing.T) {
 	assert.True(t, status.Passed, "Expected SMART status to be passed")
 }
 
+// TestCheckSmartStatus_ATASelfTestNilStatus ensures no panic when SelfTest is present but Status is nil.
+// Status is a pointer (*StatusField) that can be absent in some smartctl responses.
+func TestCheckSmartStatus_ATASelfTestNilStatus(t *testing.T) {
+	smartInfo := &SMARTInfo{
+		SmartStatus: &SmartStatus{Passed: true},
+		AtaSmartData: &AtaSmartData{
+			SelfTest: &SelfTest{
+				// Status deliberately left nil (pointer is nil)
+				PollingMinutes: &PollingMinutes{Short: 2},
+			},
+		},
+	}
+
+	// Must not panic; should fall through to the SmartStatus branch.
+	status := checkSmartStatus(smartInfo)
+	assert.False(t, status.Running, "Expected Running false when Status is nil")
+	assert.True(t, status.Passed, "Expected Passed from SmartStatus field")
+}
+
 // TestGetSMARTInfo_PopulatesSmartStatus tests that GetSMARTInfo populates SmartStatus.Running
 func TestGetSMARTInfo_PopulatesSmartStatus(t *testing.T) {
 	mockJSON := `{

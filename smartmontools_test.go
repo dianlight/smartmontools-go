@@ -1245,6 +1245,85 @@ func TestGetAvailableSelfTestsError(t *testing.T) {
 	assert.Error(t, err)
 }
 
+func TestGetAvailableSelfTestsNVMeBothCapabilityFields(t *testing.T) {
+	// When both nvme_controller_capabilities and nvme_optional_admin_commands report
+	// self-test support, "short" must appear exactly once (no duplicates).
+	mockJSON := `{
+		"nvme_controller_capabilities": {"self_test": true},
+		"nvme_optional_admin_commands": {"self_test": true}
+	}`
+	commander := &mockCommander{
+		cmds: map[string]*mockCmd{
+			"/usr/sbin/smartctl -c -j --nocheck=standby /dev/nvme0n1": {output: []byte(mockJSON)},
+		},
+	}
+	client, _ := NewClient(WithSmartctlPath("/usr/sbin/smartctl"), WithCommander(commander))
+
+	info, err := client.GetAvailableSelfTests(context.Background(), "/dev/nvme0n1")
+	assert.NoError(t, err)
+	assert.Equal(t, []string{"short"}, info.Available, "Expected exactly one 'short' entry")
+}
+
+func TestGetAvailableSelfTestsFromInfo_ATA(t *testing.T) {
+	smartInfo := &SMARTInfo{
+		AtaSmartData: &AtaSmartData{
+			Capabilities: &Capabilities{
+				SelfTestsSupported:          true,
+				ConveyanceSelfTestSupported: true,
+				ExecOfflineImmediate:        true,
+			},
+			SelfTest: &SelfTest{
+				PollingMinutes: &PollingMinutes{
+					Short:      2,
+					Extended:   48,
+					Conveyance: 5,
+				},
+			},
+		},
+	}
+	client, _ := NewClient(WithSmartctlPath("/usr/sbin/smartctl"), WithCommander(&mockCommander{cmds: map[string]*mockCmd{}}))
+
+	info := client.GetAvailableSelfTestsFromInfo(smartInfo)
+	assert.Equal(t, []string{"short", "long", "conveyance", "offline"}, info.Available)
+	assert.Equal(t, 2, info.Durations["short"])
+	assert.Equal(t, 48, info.Durations["long"])
+	assert.Equal(t, 5, info.Durations["conveyance"])
+}
+
+func TestGetAvailableSelfTestsFromInfo_NVMe(t *testing.T) {
+	smartInfo := &SMARTInfo{
+		NvmeControllerCapabilities: &NvmeControllerCapabilities{
+			SelfTest: true,
+		},
+	}
+	client, _ := NewClient(WithSmartctlPath("/usr/sbin/smartctl"), WithCommander(&mockCommander{cmds: map[string]*mockCmd{}}))
+
+	info := client.GetAvailableSelfTestsFromInfo(smartInfo)
+	assert.Equal(t, []string{"short"}, info.Available)
+	assert.Empty(t, info.Durations)
+}
+
+func TestGetAvailableSelfTestsFromInfo_Nil(t *testing.T) {
+	client, _ := NewClient(WithSmartctlPath("/usr/sbin/smartctl"), WithCommander(&mockCommander{cmds: map[string]*mockCmd{}}))
+
+	info := client.GetAvailableSelfTestsFromInfo(nil)
+	assert.Empty(t, info.Available)
+	assert.Empty(t, info.Durations)
+}
+
+func TestGetAvailableSelfTestsFromInfo_NoCapabilities(t *testing.T) {
+	smartInfo := &SMARTInfo{
+		AtaSmartData: &AtaSmartData{
+			// Capabilities is nil — no tests available
+		},
+	}
+	client, _ := NewClient(WithSmartctlPath("/usr/sbin/smartctl"), WithCommander(&mockCommander{cmds: map[string]*mockCmd{}}))
+
+	info := client.GetAvailableSelfTestsFromInfo(smartInfo)
+	assert.Empty(t, info.Available)
+	assert.Empty(t, info.Durations)
+}
+
 func TestIsSMARTSupportedATA(t *testing.T) {
 	mockJSON := `{
 		"device": {"name": "/dev/sda", "type": "ata"},
