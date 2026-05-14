@@ -71,7 +71,10 @@ func TestSMARTEnabledStatusForATADevices(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			commander := &mockCommander{
 				cmds: map[string]*mockCmd{
+					// Initial call (device type not yet cached)
 					"/usr/sbin/smartctl -a -j --nocheck=standby /dev/sda": {output: []byte(tt.mockJSON)},
+					// Second call after GetSMARTInfo caches the type from the JSON response
+					"/usr/sbin/smartctl -a -j --nocheck=standby -d sat /dev/sda": {output: []byte(tt.mockJSON)},
 				},
 			}
 			client, err := NewClient(WithSmartctlPath("/usr/sbin/smartctl"), WithCommander(commander))

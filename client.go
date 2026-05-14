@@ -181,6 +181,14 @@ func (c *Client) ScanDevices(ctx context.Context) ([]Device, error) {
 			Name: d.Name,
 			Type: d.Type,
 		}
+		// Cache device type discovered by --scan-open so all subsequent methods
+		// can use --nocheck=standby and the correct -d <type> argument without
+		// needing an extra disk query.
+		if d.Name != "" && d.Type != "" {
+			if _, cached := c.getCachedDeviceType(d.Name); !cached {
+				c.setCachedDeviceType(d.Name, d.Type)
+			}
+		}
 	}
 
 	return devices, nil
@@ -395,6 +403,15 @@ func (c *Client) GetSMARTInfo(ctx context.Context, devicePath string) (*SMARTInf
 	// Populate SmartStatus.Running field based on test status
 	smartInfo.SmartStatus = checkSmartStatus(&smartInfo)
 
+	// Cache the device type from the successful response so all subsequent
+	// methods can use --nocheck=standby and the correct -d <type> argument
+	// without issuing another disk query.
+	if smartInfo.Device.Type != "" {
+		if _, cached := c.getCachedDeviceType(devicePath); !cached {
+			c.setCachedDeviceType(devicePath, smartInfo.Device.Type)
+		}
+	}
+
 	return &smartInfo, nil
 }
 
@@ -591,15 +608,18 @@ func (c *Client) RunSelfTestWithProgress(ctx context.Context, devicePath string,
 			expectedMinutes = duration
 		}
 
-		// Poll for completion
-		ticker := time.NewTicker(5 * time.Second)
+		// Poll for completion using an adaptive interval: at most 24 samples over
+		// the expected duration, clamped between 5 s and 60 s. This avoids waking
+		// the disk 1 440 times for a 2-hour long test.
+		pollIntervalSecs := max(5, min(60, expectedMinutes*60/24))
+		ticker := time.NewTicker(time.Duration(pollIntervalSecs) * time.Second)
 		defer ticker.Stop()
 
 		elapsed := 0
 		for {
 			select {
 			case <-ticker.C:
-				elapsed += 5
+				elapsed += pollIntervalSecs
 				progress := (elapsed * 100) / (expectedMinutes * 60)
 				if progress > 100 {
 					progress = 100
@@ -615,7 +635,7 @@ func (c *Client) RunSelfTestWithProgress(ctx context.Context, devicePath string,
 				}
 
 				// Using SMART infor remaining_percent if available
-				if info.AtaSmartData.SelfTest != nil && info.AtaSmartData.SelfTest.Status.RemainingPercent != nil {
+				if info.AtaSmartData != nil && info.AtaSmartData.SelfTest != nil && info.AtaSmartData.SelfTest.Status != nil && info.AtaSmartData.SelfTest.Status.RemainingPercent != nil {
 					remaining := *info.AtaSmartData.SelfTest.Status.RemainingPercent
 					calculatedProgress := 100 - remaining
 					if calculatedProgress > progress {
@@ -890,14 +910,22 @@ func (c *Client) DisableSMART(ctx context.Context, devicePath string) error {
 		ctx = c.defaultCtx
 	}
 
-	// Check if device is NVMe - SMART cannot be disabled on NVMe devices
-	info, err := c.GetSMARTInfo(ctx, devicePath)
-	if err != nil {
-		return fmt.Errorf("failed to check device type: %w", err)
-	}
-
-	if determineDiskType(info) == "NVMe" {
-		return fmt.Errorf("cannot disable SMART: NVMe devices do not support SMART disable operation")
+	// Check the cached device type first to avoid an unnecessary full disk query.
+	// GetSMARTInfo populates the cache on its first successful call, so this path
+	// is taken on every call after the initial scan or info query.
+	if cachedType, ok := c.getCachedDeviceType(devicePath); ok {
+		if strings.ToLower(cachedType) == "nvme" {
+			return fmt.Errorf("cannot disable SMART: NVMe devices do not support SMART disable operation")
+		}
+	} else {
+		// Cache is cold: query device info to determine the disk family.
+		info, err := c.GetSMARTInfo(ctx, devicePath)
+		if err != nil {
+			return fmt.Errorf("failed to check device type: %w", err)
+		}
+		if determineDiskType(info) == "NVMe" {
+			return fmt.Errorf("cannot disable SMART: NVMe devices do not support SMART disable operation")
+		}
 	}
 
 	cmd := c.commander.Command(ctx, c.logHandler, c.smartctlPath, "-s", "off", devicePath)
