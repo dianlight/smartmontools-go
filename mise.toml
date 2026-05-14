@@ -1,0 +1,143 @@
+[tools]
+go = "1.26"
+
+[tasks.test]
+description = "Run unit tests for all packages"
+run = "go test -failfast ./..."
+
+[tasks.coverage]
+description = "Run tests and show coverage summary"
+run = '''
+go test -failfast -coverprofile=coverage.txt ./... -covermode=atomic || true
+echo "Summary:"
+if [ -f coverage.txt ]; then go tool cover -func=coverage.txt | tail -n 1; fi
+'''
+
+[tasks.fmt]
+description = "Run gofmt on the project"
+run = "gofmt -s -w ."
+
+[tasks.fmt-check]
+description = "Check code format (gofmt)"
+run = '''
+UNFORMATTED=$(gofmt -l .)
+if [ -n "$UNFORMATTED" ]; then
+  echo "gofmt needs to be applied to: $UNFORMATTED"
+  exit 1
+fi
+'''
+
+[tasks.vet]
+description = "Run go vet on the project"
+run = "go vet ./..."
+
+[tasks.lint]
+description = "Run staticcheck if available"
+run = '''
+if command -v staticcheck >/dev/null 2>&1; then
+  staticcheck ./...
+else
+  echo "staticcheck not installed; skip (install: go install honnef.co/go/tools/cmd/staticcheck@latest)"
+fi
+'''
+
+[tasks.ci-lint]
+description = "Run CI linting: fmt-check, vet, staticcheck"
+depends = ["fmt-check", "vet"]
+run = '''
+GOBIN=$(go env GOBIN)
+if [ -z "$GOBIN" ]; then GOBIN=$(go env GOPATH)/bin; fi
+if ! command -v staticcheck >/dev/null 2>&1 && [ ! -x "$GOBIN/staticcheck" ]; then
+  echo "staticcheck not found — installing to $GOBIN..."
+  go install honnef.co/go/tools/cmd/staticcheck@latest
+  if [ ! -x "$GOBIN/staticcheck" ]; then echo "staticcheck installation failed"; exit 1; fi
+fi
+echo "Running staticcheck..."
+"$GOBIN/staticcheck" ./...
+'''
+
+[tasks.ci]
+description = "Run all CI checks (tidy, mod-download, ci-lint, test)"
+depends = ["tidy", "mod-download", "ci-lint", "test"]
+run = "echo 'CI: all checks passed'"
+
+[tasks.tidy]
+description = "Run go mod tidy"
+run = "go mod tidy"
+
+[tasks.mod-download]
+description = "Download modules (go mod download)"
+run = "go mod download"
+
+[tasks.run-example]
+description = "Run the example in examples/basic"
+dir = "examples/basic"
+run = "go run ./"
+
+[tasks.apidoc]
+description = "Generate API documentation (APIDOC.md)"
+run = '''
+GOBIN=$(go env GOBIN)
+if [ -z "$GOBIN" ]; then GOBIN=$(go env GOPATH)/bin; fi
+GOMARKDOC=$(command -v gomarkdoc 2>/dev/null || echo "$GOBIN/gomarkdoc")
+if [ -x "$GOMARKDOC" ]; then
+  "$GOMARKDOC" -o APIDOC.md .
+else
+  echo "gomarkdoc not installed; install: go install github.com/princjef/gomarkdoc/cmd/gomarkdoc@latest"
+  exit 1
+fi
+'''
+
+[tasks.release]
+description = "Create and push a release tag (VERSION_TYPE=major|minor|patch)"
+run = '''
+VERSION_TYPE=${VERSION_TYPE:-patch}
+CURRENT_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+CURRENT_VERSION=$(echo "$CURRENT_TAG" | sed 's/^v//' | sed 's/-.*//')
+MAJOR=$(echo "$CURRENT_VERSION" | cut -d. -f1)
+MINOR=$(echo "$CURRENT_VERSION" | cut -d. -f2)
+PATCH=$(echo "$CURRENT_VERSION" | cut -d. -f3)
+case $VERSION_TYPE in
+  major) NEW_MAJOR=$((MAJOR + 1)); NEW_MINOR=0; NEW_PATCH=0 ;;
+  minor) NEW_MAJOR=$MAJOR; NEW_MINOR=$((MINOR + 1)); NEW_PATCH=0 ;;
+  patch) NEW_MAJOR=$MAJOR; NEW_MINOR=$MINOR; NEW_PATCH=$((PATCH + 1)) ;;
+  *) echo "Invalid VERSION_TYPE: $VERSION_TYPE"; exit 1 ;;
+esac
+NEW_TAG="v$NEW_MAJOR.$NEW_MINOR.$NEW_PATCH"
+echo "Creating release tag $NEW_TAG"
+git tag "$NEW_TAG" && git push origin "$NEW_TAG"
+GOPROXY=proxy.golang.org go list -m "github.com/dianlight/smartmontools-go@$NEW_TAG"
+'''
+
+[tasks.prerelease]
+description = "Create and push a prerelease tag (VERSION_TYPE=major|minor|patch)"
+run = '''
+VERSION_TYPE=${VERSION_TYPE:-patch}
+CURRENT_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+HAS_PRERELEASE=$(echo "$CURRENT_TAG" | grep -c '-')
+if [ "$HAS_PRERELEASE" -eq 1 ]; then
+  PRERELEASE_PART=$(echo "$CURRENT_TAG" | sed 's/.*-//')
+  N=$(echo "$PRERELEASE_PART" | cut -d. -f2)
+  NEW_N=$((N + 1))
+  NEW_TAG=$(echo "$CURRENT_TAG" | sed "s/\.[0-9]*$/.$NEW_N/")
+else
+  CURRENT_VERSION=$(echo "$CURRENT_TAG" | sed 's/^v//' | sed 's/-.*//')
+  MAJOR=$(echo "$CURRENT_VERSION" | cut -d. -f1)
+  MINOR=$(echo "$CURRENT_VERSION" | cut -d. -f2)
+  PATCH=$(echo "$CURRENT_VERSION" | cut -d. -f3)
+  case $VERSION_TYPE in
+    major) NEW_MAJOR=$((MAJOR + 1)); NEW_MINOR=0; NEW_PATCH=0 ;;
+    minor) NEW_MAJOR=$MAJOR; NEW_MINOR=$((MINOR + 1)); NEW_PATCH=0 ;;
+    patch) NEW_MAJOR=$MAJOR; NEW_MINOR=$MINOR; NEW_PATCH=$((PATCH + 1)) ;;
+    *) echo "Invalid VERSION_TYPE: $VERSION_TYPE"; exit 1 ;;
+  esac
+  NEW_TAG="v$NEW_MAJOR.$NEW_MINOR.$NEW_PATCH-beta.0"
+fi
+echo "Creating prerelease tag $NEW_TAG"
+git tag "$NEW_TAG" && git push origin "$NEW_TAG"
+GOPROXY=proxy.golang.org go list -m "github.com/dianlight/smartmontools-go@$NEW_TAG"
+'''
+
+[tasks.clean]
+description = "Remove build artifacts"
+run = "rm -f smartmontools-go coverage.txt coverage.out APIDOC.md"
