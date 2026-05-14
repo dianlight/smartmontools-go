@@ -128,8 +128,8 @@ func TestSMARTDisabledDoesNotWakeDisk(t *testing.T) {
 	assert.True(t, smartInfo.SmartSupport.Available)
 	assert.False(t, smartInfo.SmartSupport.Enabled)
 
-	// Verify that isSMARTSupported works correctly with this SMARTInfo
-	support := client.(*Client).isSMARTSupported(smartInfo)
+	// Verify that GetSMARTSupportFromInfo works correctly with this SMARTInfo
+	support := client.(*Client).GetSMARTSupportFromInfo(smartInfo)
 	assert.True(t, support.Available)
 	assert.False(t, support.Enabled, "SMART should be disabled as per the smartctl output")
 }
