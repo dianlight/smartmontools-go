@@ -559,14 +559,23 @@ This repository uses [`mise`](https://mise.jdx.dev/) for task running and a GitH
 
 Common tasks:
 
-| Command             | Description                                    |
-| ------------------- | ---------------------------------------------- |
-| `mise run test`     | Run unit tests for all packages                |
-| `mise run ci`       | Run all CI checks (tidy, download, lint, test) |
-| `mise run lint`     | Run staticcheck                                |
-| `mise run fmt`      | Run gofmt on the project                       |
-| `mise run coverage` | Run tests and show coverage summary            |
-| `mise run apidoc`   | Generate API documentation (`APIDOC.md`)       |
-| `mise run clean`    | Remove build artifacts                         |
+| Command                                     | Description                                         |
+| ------------------------------------------- | --------------------------------------------------- |
+| `mise run test`                             | Run unit tests for all packages                     |
+| `mise run ci`                               | Run all CI checks (tidy, download, lint, test)      |
+| `mise run lint`                             | Run staticcheck                                     |
+| `mise run fmt`                              | Run gofmt on the project                            |
+| `mise run coverage`                         | Run tests and show coverage summary                 |
+| `mise run apidoc`                           | Generate API documentation (`APIDOC.md`)            |
+| `mise run clean`                            | Remove build artifacts                              |
+| `mise run release [major\|minor\|patch]`    | Create and push a release tag (default: `patch`)    |
+| `mise run prerelease [major\|minor\|patch]` | Create and push a prerelease tag (default: `patch`) |
+
+Both `release` and `prerelease` accept a `--dry-run` flag to preview the tag that would be created without pushing anything:
+
+```sh
+mise run release minor --dry-run
+mise run prerelease --dry-run
+```
 
 To list all available tasks run `mise tasks`.

@@ -64,9 +64,15 @@ description = "Generate API documentation (APIDOC.md)"
 run = "gomarkdoc -o APIDOC.md ."
 
 [tasks.release]
-description = "Create and push a release tag (VERSION_TYPE=major|minor|patch)"
+description = "Create and push a release tag"
+usage = '''
+arg "[version_type]" help="Version bump type" default="patch" {
+  choices "major" "minor" "patch"
+}
+flag "--dry-run" help="Print what would happen without creating or pushing the tag"
+'''
 run = '''
-VERSION_TYPE=${VERSION_TYPE:-patch}
+VERSION_TYPE="${usage_version_type?}"
 CURRENT_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
 CURRENT_VERSION=$(echo "$CURRENT_TAG" | sed 's/^v//' | sed 's/-.*//')
 MAJOR=$(echo "$CURRENT_VERSION" | cut -d. -f1)
@@ -76,21 +82,30 @@ case $VERSION_TYPE in
   major) NEW_MAJOR=$((MAJOR + 1)); NEW_MINOR=0; NEW_PATCH=0 ;;
   minor) NEW_MAJOR=$MAJOR; NEW_MINOR=$((MINOR + 1)); NEW_PATCH=0 ;;
   patch) NEW_MAJOR=$MAJOR; NEW_MINOR=$MINOR; NEW_PATCH=$((PATCH + 1)) ;;
-  *) echo "Invalid VERSION_TYPE: $VERSION_TYPE"; exit 1 ;;
 esac
 NEW_TAG="v$NEW_MAJOR.$NEW_MINOR.$NEW_PATCH"
-echo "Creating release tag $NEW_TAG"
-git tag "$NEW_TAG" && git push origin "$NEW_TAG"
-GOPROXY=proxy.golang.org go list -m "github.com/dianlight/smartmontools-go@$NEW_TAG"
+echo "Release tag: $NEW_TAG"
+if [ "${usage_dry_run:-false}" = "true" ]; then
+  echo "[dry-run] git tag $NEW_TAG && git push origin $NEW_TAG"
+  echo "[dry-run] GOPROXY=proxy.golang.org go list -m github.com/dianlight/smartmontools-go@$NEW_TAG"
+else
+  git tag "$NEW_TAG" && git push origin "$NEW_TAG"
+  GOPROXY=proxy.golang.org go list -m "github.com/dianlight/smartmontools-go@$NEW_TAG"
+fi
 '''
 
 [tasks.prerelease]
-description = "Create and push a prerelease tag (VERSION_TYPE=major|minor|patch)"
+description = "Create and push a prerelease tag"
+usage = '''
+arg "[version_type]" help="Version bump type" default="patch" {
+  choices "major" "minor" "patch"
+}
+flag "--dry-run" help="Print what would happen without creating or pushing the tag"
+'''
 run = '''
-VERSION_TYPE=${VERSION_TYPE:-patch}
+VERSION_TYPE="${usage_version_type?}"
 CURRENT_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
-HAS_PRERELEASE=$(echo "$CURRENT_TAG" | grep -c '-')
-if [ "$HAS_PRERELEASE" -eq 1 ]; then
+if [[ "$CURRENT_TAG" == *-* ]]; then
   PRERELEASE_PART=$(echo "$CURRENT_TAG" | sed 's/.*-//')
   N=$(echo "$PRERELEASE_PART" | cut -d. -f2)
   NEW_N=$((N + 1))
@@ -104,13 +119,17 @@ else
     major) NEW_MAJOR=$((MAJOR + 1)); NEW_MINOR=0; NEW_PATCH=0 ;;
     minor) NEW_MAJOR=$MAJOR; NEW_MINOR=$((MINOR + 1)); NEW_PATCH=0 ;;
     patch) NEW_MAJOR=$MAJOR; NEW_MINOR=$MINOR; NEW_PATCH=$((PATCH + 1)) ;;
-    *) echo "Invalid VERSION_TYPE: $VERSION_TYPE"; exit 1 ;;
   esac
   NEW_TAG="v$NEW_MAJOR.$NEW_MINOR.$NEW_PATCH-beta.0"
 fi
-echo "Creating prerelease tag $NEW_TAG"
-git tag "$NEW_TAG" && git push origin "$NEW_TAG"
-GOPROXY=proxy.golang.org go list -m "github.com/dianlight/smartmontools-go@$NEW_TAG"
+echo "Prerelease tag: $NEW_TAG"
+if [ "${usage_dry_run:-false}" = "true" ]; then
+  echo "[dry-run] git tag $NEW_TAG && git push origin $NEW_TAG"
+  echo "[dry-run] GOPROXY=proxy.golang.org go list -m github.com/dianlight/smartmontools-go@$NEW_TAG"
+else
+  git tag "$NEW_TAG" && git push origin "$NEW_TAG"
+  GOPROXY=proxy.golang.org go list -m "github.com/dianlight/smartmontools-go@$NEW_TAG"
+fi
 '''
 
 [tasks.clean]
