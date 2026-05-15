@@ -19,11 +19,11 @@ func TestSmartctlSearchPaths_NotEmpty(t *testing.T) {
 // platform-specific installation locations are represented.
 func TestSmartctlSearchPaths_ContainsPlatformPaths(t *testing.T) {
 	expected := []string{
-		"/usr/sbin/smartctl",            // Standard Linux
-		"/usr/local/sbin/smartctl",      // FreeBSD / TrueNAS CORE
-		"/opt/homebrew/bin/smartctl",    // macOS Homebrew Apple Silicon
-		"/usr/local/bin/smartctl",       // macOS Homebrew Intel
-		"/usr/syno/bin/smartctl",        // Synology DSM
+		"/usr/sbin/smartctl",                   // Standard Linux
+		"/usr/local/sbin/smartctl",             // FreeBSD / TrueNAS CORE
+		"/opt/homebrew/bin/smartctl",           // macOS Homebrew Apple Silicon
+		"/usr/local/bin/smartctl",              // macOS Homebrew Intel
+		"/usr/syno/bin/smartctl",               // Synology DSM
 		"/run/current-system/sw/sbin/smartctl", // NixOS
 	}
 	for _, want := range expected {
