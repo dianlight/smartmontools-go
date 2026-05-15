@@ -492,8 +492,8 @@ func checkSmartStatus(sMARTInfo *SMARTInfo) *SmartStatus {
 	var damaged, critical bool
 	if sMARTInfo.Smartctl != nil {
 		exitStatus := sMARTInfo.Smartctl.ExitStatus
-		damaged = exitStatus&0x00000100 != 0
-		critical = exitStatus&0x00001000 != 0
+		damaged = exitStatus&0x08 != 0
+		critical = exitStatus&0x10 != 0
 
 		// Populate ExitCodeInfo so consumers can inspect exit status bits
 		// programmatically without parsing error strings.
