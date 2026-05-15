@@ -14,11 +14,13 @@ import (
 	"github.com/dianlight/tlog"
 )
 
-// SMART attribute IDs for SSD detection
+// SMART attribute IDs for SSD detection and wear-level computation
 const (
-	SmartAttrSSDLifeLeft       = 231 // SSD Life Left attribute
-	SmartAttrSandForceInternal = 233 // SandForce Internal (SSD-specific)
-	SmartAttrTotalLBAsWritten  = 234 // Total LBAs Written (SSD-specific)
+	SmartAttrSSDLifeUsed       = 173 // SSD Life Used — raw value is percent used (0 = new)
+	SmartAttrWearLevelingCount = 177 // Wear Leveling Count — normalized value is remaining life (100 = new)
+	SmartAttrSSDLifeLeft       = 231 // SSD Life Left — normalized value is remaining life (100 = new)
+	SmartAttrSandForceInternal = 233 // SandForce Internal (SSD-specific, used for drive-type detection)
+	SmartAttrTotalLBAsWritten  = 234 // Total LBAs Written (SSD-specific, used for drive-type detection)
 )
 
 // Valid self-test types for SMART testing

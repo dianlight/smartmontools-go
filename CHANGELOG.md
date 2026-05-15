@@ -63,6 +63,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Useful for diagnosing protocol-detection issues and generating device override
   configurations without writing application code.
 
+- **`WearLevelPercent` method on `SMARTInfo`** (`types.go`): New
+  `WearLevelPercent() *int` method returns the percentage of drive life *used*
+  (0 = new, 100 = worn out) for SSDs and NVMe drives, or `nil` for HDDs and
+  unknown types. Sources by drive type:
+  - NVMe: `nvme_smart_health_information_log.percentage_used`
+  - ATA SSD: SMART attributes in priority order — 231 (SSD Life Left),
+    177 (Wear Leveling Count), 173 (SSD Life Used)
+  - HDD / Unknown: `nil`
+
+  The returned value is always clamped to [0, 100]. New package constants
+  `SmartAttrSSDLifeUsed = 173` and `SmartAttrWearLevelingCount = 177` are
+  exported alongside the existing SSD detection constants.
+
 ### Changed
 
 - `ScanDevices` now logs a `WARN` and retries with `--scan` instead of returning an

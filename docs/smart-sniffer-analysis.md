@@ -142,7 +142,8 @@ Add an optional `DiscoverDevices(ctx context.Context) ([]DiscoveryResult, error)
 
 ## Finding 6: Platform Detection for NAS Targets
 
-**Priority:** Low–Medium
+**Priority:** Low–Medium  
+**Status:** ⏭️ Skipped — the multi-path `smartctl` binary resolution added in Finding 1 already covers the most common NAS platforms (Synology, QNAP, FreeBSD/TrueNAS). Full platform detection with Synology `/dev/sata*` device injection is deferred.
 
 ### smart-sniffer approach
 
@@ -168,7 +169,8 @@ Add an internal `detectPlatform()` with the same `os.Stat`-based checks. Gate th
 
 ## Finding 7: Wear Level Normalization Across Drive Types
 
-**Priority:** Low–Medium
+**Priority:** Low–Medium  
+**Status:** ✅ Resolved — `WearLevelPercent() *int` method added to `SMARTInfo` in [`types.go`](../types.go). New constants `SmartAttrSSDLifeUsed = 173` and `SmartAttrWearLevelingCount = 177` added to [`client.go`](../client.go). Tests added in [`smartstatus_test.go`](../smartstatus_test.go) (`TestWearLevelPercent_*`).
 
 ### smart-sniffer approach
 
@@ -201,7 +203,7 @@ Add a `WearLevelPercent() *int` method on `SMARTInfo` that returns a normalized 
 | 3   | Full exit code bit decomposition (exec vs health bits) | Medium     | Medium     | ✅ Resolved |
 | 4   | `--scan-open` → `--scan` fallback in `ScanDevices`     | Medium     | Low        | ✅ Resolved |
 | 5   | Drive discovery / protocol probe mode                  | Medium     | Medium     | ✅ Resolved |
-| 6   | Platform detection for Synology/QNAP                   | Low–Medium | Low        |            |
-| 7   | Wear level normalization across drive types            | Low–Medium | Low        |            |
+| 6   | Platform detection for Synology/QNAP                   | Low–Medium | Low        | ⏭️ Skipped  |
+| 7   | Wear level normalization across drive types            | Low–Medium | Low        | ✅ Resolved |
 
 Findings 1, 2, and 4 are the highest return-on-effort items: they are small, self-contained changes to existing functions that directly improve reliability on the NAS and USB-attached devices that represent the primary real-world use case for a smartmontools Go library.

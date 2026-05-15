@@ -283,3 +283,63 @@ type DiscoveryResult struct {
 	// Serial is the drive serial number from the SMART data.
 	Serial string `json:"serial,omitempty"`
 }
+
+// WearLevelPercent returns the percentage of drive life used (0 = new, 100 = worn out),
+// or nil when the value cannot be determined (HDDs, unknown types, or missing data).
+//
+// The source depends on the drive type (SMARTInfo.DiskType):
+//
+//   - NVMe: nvme_smart_health_information_log.percentage_used
+//   - SSD:  ATA SMART attributes, tried in priority order:
+//     1. Attribute 231 (SSD Life Left)       — used = 100 − normalized value
+//     2. Attribute 177 (Wear Leveling Count) — used = 100 − normalized value
+//     3. Attribute 173 (SSD Life Used)       — used = raw value
+//   - HDD / Unknown: nil
+//
+// The returned value is always clamped to [0, 100].
+func (s *SMARTInfo) WearLevelPercent() *int {
+	clamp := func(v int) *int {
+		if v < 0 {
+			v = 0
+		}
+		if v > 100 {
+			v = 100
+		}
+		return &v
+	}
+
+	switch s.DiskType {
+	case "NVMe":
+		if s.NvmeSmartHealth == nil {
+			return nil
+		}
+		return clamp(s.NvmeSmartHealth.PercentageUsed)
+
+	case "SSD":
+		if s.AtaSmartData == nil {
+			return nil
+		}
+		// Single-pass scan: track the best match found so far by priority.
+		var byAttr231, byAttr177, byAttr173 *int
+		for _, attr := range s.AtaSmartData.Table {
+			switch attr.ID {
+			case SmartAttrSSDLifeLeft: // 231 — normalized value = remaining life %
+				byAttr231 = clamp(100 - attr.Value)
+			case SmartAttrWearLevelingCount: // 177 — normalized value = remaining life %
+				byAttr177 = clamp(100 - attr.Value)
+			case SmartAttrSSDLifeUsed: // 173 — raw value = used life %
+				byAttr173 = clamp(int(attr.Raw.Value))
+			}
+		}
+		if byAttr231 != nil {
+			return byAttr231
+		}
+		if byAttr177 != nil {
+			return byAttr177
+		}
+		return byAttr173
+
+	default:
+		return nil
+	}
+}

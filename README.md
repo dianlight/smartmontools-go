@@ -18,8 +18,7 @@ A Go library that interfaces with smartmontools to monitor and manage storage de
 - 💻 **NAS Platform Support**: Automatic `smartctl` discovery across Synology DSM, QNAP, FreeBSD/TrueNAS, macOS, and standard Linux
 - 💚 **Health Monitoring**: Check device health status using SMART data
 - 🏥 **SMART Health Flags**: Full exit code bit decomposition (`ExecBits` / `HealthBits`) via `ExitCodeInfo`
-- 📊 **SMART Attributes**: Read and parse detailed SMART attributes
-- 🌡️ **Temperature Monitoring**: Track device temperature
+- 📊 **SMART Attributes**: Read and parse detailed SMART attributes- 🔋 **Wear Level**: Normalized wear-level percentage for SSDs and NVMe drives via `WearLevelPercent()`- 🌡️ **Temperature Monitoring**: Track device temperature
 - ⚙️ **Self-Tests**: Initiate and monitor SMART self-tests
 - 🔧 **Device Information**: Retrieve model, serial number, firmware version, and more
 - 🔌 **USB Bridge Support**: Automatic fallback for unknown USB bridges with embedded device database
@@ -204,6 +203,33 @@ if info.ExitCodeInfo != nil {
     }
 }
 ```
+
+### Wear Level
+
+`SMARTInfo.WearLevelPercent()` returns a normalized 0–100 value representing the
+percentage of drive life *used* (0 = new, 100 = worn out), or `nil` for HDDs and
+drives where no wear data is available:
+
+```go
+info, err := client.GetSMARTInfo(ctx, "/dev/sda")
+if err != nil {
+    log.Fatalf("Failed to get SMART info: %v", err)
+}
+
+if wear := info.WearLevelPercent(); wear != nil {
+    fmt.Printf("Wear level: %d%%\n", *wear)
+} else {
+    fmt.Println("Wear level: N/A (HDD or unsupported drive)")
+}
+```
+
+The source used depends on the drive type:
+
+| Drive type | Source                                                                     |
+| ---------- | -------------------------------------------------------------------------- |
+| NVMe       | `nvme_smart_health_information_log.percentage_used`                        |
+| SSD (ATA)  | Attr 231 (SSD Life Left) → 177 (Wear Leveling Count) → 173 (SSD Life Used) |
+| HDD        | `nil`                                                                      |
 
 ### Logging
 

@@ -453,3 +453,151 @@ func TestLogHealthBits_DeduplicationByCache(t *testing.T) {
 	c.healthBitsCacheMux.RUnlock()
 	assert.Equal(t, 0x10, val3, "cache should be updated when health bits change")
 }
+
+// ─── WearLevelPercent ─────────────────────────────────────────────────────────
+
+// TestWearLevelPercent_NVMe tests that NVMe drives return PercentageUsed directly.
+func TestWearLevelPercent_NVMe(t *testing.T) {
+	info := &SMARTInfo{
+		DiskType:        "NVMe",
+		NvmeSmartHealth: &NvmeSmartHealth{PercentageUsed: 23},
+	}
+	got := info.WearLevelPercent()
+	require.NotNil(t, got)
+	assert.Equal(t, 23, *got)
+}
+
+// TestWearLevelPercent_NVMe_NilHealth returns nil when NvmeSmartHealth is absent.
+func TestWearLevelPercent_NVMe_NilHealth(t *testing.T) {
+	info := &SMARTInfo{DiskType: "NVMe"}
+	assert.Nil(t, info.WearLevelPercent())
+}
+
+// TestWearLevelPercent_SSD_Attr231 tests that attr 231 (SSD Life Left) is the
+// highest-priority source for ATA SSDs (used = 100 − value).
+func TestWearLevelPercent_SSD_Attr231(t *testing.T) {
+	info := &SMARTInfo{
+		DiskType: "SSD",
+		AtaSmartData: &AtaSmartData{
+			Table: []SmartAttribute{
+				{ID: SmartAttrSSDLifeLeft, Value: 75}, // 25 % used
+				{ID: SmartAttrWearLevelingCount, Value: 60},
+			},
+		},
+	}
+	got := info.WearLevelPercent()
+	require.NotNil(t, got)
+	assert.Equal(t, 25, *got, "expected 100-75=25 from attr 231")
+}
+
+// TestWearLevelPercent_SSD_Attr177 tests that attr 177 is used when 231 is absent.
+func TestWearLevelPercent_SSD_Attr177(t *testing.T) {
+	info := &SMARTInfo{
+		DiskType: "SSD",
+		AtaSmartData: &AtaSmartData{
+			Table: []SmartAttribute{
+				{ID: SmartAttrWearLevelingCount, Value: 80}, // 20 % used
+			},
+		},
+	}
+	got := info.WearLevelPercent()
+	require.NotNil(t, got)
+	assert.Equal(t, 20, *got, "expected 100-80=20 from attr 177")
+}
+
+// TestWearLevelPercent_SSD_Attr173 tests that attr 173 is the lowest-priority fallback.
+func TestWearLevelPercent_SSD_Attr173(t *testing.T) {
+	info := &SMARTInfo{
+		DiskType: "SSD",
+		AtaSmartData: &AtaSmartData{
+			Table: []SmartAttribute{
+				{ID: SmartAttrSSDLifeUsed, Raw: Raw{Value: 42}}, // 42 % used
+			},
+		},
+	}
+	got := info.WearLevelPercent()
+	require.NotNil(t, got)
+	assert.Equal(t, 42, *got, "expected raw value 42 from attr 173")
+}
+
+// TestWearLevelPercent_HDD returns nil for spinning hard drives.
+func TestWearLevelPercent_HDD(t *testing.T) {
+	info := &SMARTInfo{DiskType: "HDD"}
+	assert.Nil(t, info.WearLevelPercent())
+}
+
+// TestWearLevelPercent_Unknown returns nil when disk type cannot be determined.
+func TestWearLevelPercent_Unknown(t *testing.T) {
+	info := &SMARTInfo{DiskType: "Unknown"}
+	assert.Nil(t, info.WearLevelPercent())
+}
+
+// TestWearLevelPercent_SSD_NoRelevantAttrs returns nil when no wear attributes exist.
+func TestWearLevelPercent_SSD_NoRelevantAttrs(t *testing.T) {
+	info := &SMARTInfo{
+		DiskType: "SSD",
+		AtaSmartData: &AtaSmartData{
+			Table: []SmartAttribute{
+				{ID: 9, Value: 99},  // Power-on hours — irrelevant
+				{ID: 12, Value: 99}, // Power cycle count — irrelevant
+			},
+		},
+	}
+	assert.Nil(t, info.WearLevelPercent())
+}
+
+// TestWearLevelPercent_Clamping verifies out-of-range values are clamped to [0, 100].
+func TestWearLevelPercent_Clamping(t *testing.T) {
+	tests := []struct {
+		name string
+		info *SMARTInfo
+		want int
+	}{
+		{
+			name: "NVMe percentage_used > 100 clamped to 100",
+			info: &SMARTInfo{
+				DiskType:        "NVMe",
+				NvmeSmartHealth: &NvmeSmartHealth{PercentageUsed: 120},
+			},
+			want: 100,
+		},
+		{
+			name: "SSD attr231 value=0 gives 100 (fully worn)",
+			info: &SMARTInfo{
+				DiskType: "SSD",
+				AtaSmartData: &AtaSmartData{
+					Table: []SmartAttribute{{ID: SmartAttrSSDLifeLeft, Value: 0}},
+				},
+			},
+			want: 100,
+		},
+		{
+			name: "SSD attr231 value=100 gives 0 (brand new)",
+			info: &SMARTInfo{
+				DiskType: "SSD",
+				AtaSmartData: &AtaSmartData{
+					Table: []SmartAttribute{{ID: SmartAttrSSDLifeLeft, Value: 100}},
+				},
+			},
+			want: 0,
+		},
+		{
+			name: "SSD attr173 raw > 100 clamped to 100",
+			info: &SMARTInfo{
+				DiskType: "SSD",
+				AtaSmartData: &AtaSmartData{
+					Table: []SmartAttribute{{ID: SmartAttrSSDLifeUsed, Raw: Raw{Value: 200}}},
+				},
+			},
+			want: 100,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.info.WearLevelPercent()
+			require.NotNil(t, got)
+			assert.Equal(t, tt.want, *got)
+		})
+	}
+}
