@@ -129,13 +129,37 @@ func TestScanDevices(t *testing.T) {
 func TestScanDevicesError(t *testing.T) {
 	commander := &mockCommander{
 		cmds: map[string]*mockCmd{
+			// Both --scan-open and --scan fallback fail.
 			"/usr/sbin/smartctl --scan-open --json": {err: errors.New("command failed")},
+			"/usr/sbin/smartctl --scan --json":      {err: errors.New("command failed")},
 		},
 	}
 	client, _ := NewClient(WithSmartctlPath("/usr/sbin/smartctl"), WithCommander(commander))
 
 	_, err := client.ScanDevices(context.Background())
 	assert.Error(t, err)
+}
+
+// TestScanDevicesFallback verifies that ScanDevices falls back to --scan when
+// --scan-open fails.
+func TestScanDevicesFallback(t *testing.T) {
+	mockJSON := `{
+		"devices": [
+			{"name": "/dev/sda", "type": "ata"}
+		]
+	}`
+	commander := &mockCommander{
+		cmds: map[string]*mockCmd{
+			"/usr/sbin/smartctl --scan-open --json": {err: errors.New("scan-open not supported")},
+			"/usr/sbin/smartctl --scan --json":      {output: []byte(mockJSON)},
+		},
+	}
+	client, _ := NewClient(WithSmartctlPath("/usr/sbin/smartctl"), WithCommander(commander))
+
+	devices, err := client.ScanDevices(context.Background())
+	assert.NoError(t, err, "should succeed after --scan fallback")
+	assert.Len(t, devices, 1)
+	assert.Equal(t, "/dev/sda", devices[0].Name)
 }
 
 func TestGetSMARTInfo(t *testing.T) {
@@ -2331,4 +2355,113 @@ func TestMessageCacheSkipsAttributeCheckWarning(t *testing.T) {
 	// Note: This could be true (first time) or false (if another test cached it)
 	// The key verification is that the code path didn't error
 	_ = result
+}
+
+// ─── DiscoverDevices ──────────────────────────────────────────────────────────
+
+// TestDiscoverDevices_AllReadable verifies that all devices are reported as
+// readable when GetSMARTInfo succeeds for each.
+func TestDiscoverDevices_AllReadable(t *testing.T) {
+	scanJSON := `{"devices":[{"name":"/dev/sda","type":"ata"},{"name":"/dev/sdb","type":"ata"}]}`
+	sdaJSON := `{"device":{"name":"/dev/sda","type":"ata"},"model_name":"Drive A","serial_number":"SNA","smart_status":{"passed":true}}`
+	sdbJSON := `{"device":{"name":"/dev/sdb","type":"ata"},"model_name":"Drive B","serial_number":"SNB","smart_status":{"passed":true}}`
+
+	commander := &mockCommander{
+		cmds: map[string]*mockCmd{
+			"/usr/sbin/smartctl --scan-open --json":                      {output: []byte(scanJSON)},
+			"/usr/sbin/smartctl -a -j --nocheck=standby -d ata /dev/sda": {output: []byte(sdaJSON)},
+			"/usr/sbin/smartctl -a -j --nocheck=standby -d ata /dev/sdb": {output: []byte(sdbJSON)},
+		},
+	}
+	client, _ := NewClient(WithSmartctlPath("/usr/sbin/smartctl"), WithCommander(commander))
+
+	results, err := client.DiscoverDevices(context.Background())
+	require.NoError(t, err)
+	require.Len(t, results, 2)
+
+	assert.Equal(t, "/dev/sda", results[0].DevicePath)
+	assert.True(t, results[0].SMARTReadable)
+	assert.False(t, results[0].SATFallbackRequired)
+	assert.Equal(t, "Drive A", results[0].Model)
+	assert.Equal(t, "SNA", results[0].Serial)
+
+	assert.Equal(t, "/dev/sdb", results[1].DevicePath)
+	assert.True(t, results[1].SMARTReadable)
+	assert.False(t, results[1].SATFallbackRequired)
+}
+
+// TestDiscoverDevices_SATFallbackRequired verifies that SATFallbackRequired is
+// set when the auto-detected protocol fails but the SAT retry succeeds.
+func TestDiscoverDevices_SATFallbackRequired(t *testing.T) {
+	scanJSON := `{"devices":[{"name":"/dev/sda","type":"ata"}]}`
+	satJSON := `{"device":{"name":"/dev/sda","type":"sat"},"model_name":"USB Drive","serial_number":"USB123","smart_status":{"passed":true}}`
+
+	commander := &mockCommander{
+		cmds: map[string]*mockCmd{
+			"/usr/sbin/smartctl --scan-open --json": {output: []byte(scanJSON)},
+			// GetSMARTInfo uses cached "ata" from scan and fails:
+			"/usr/sbin/smartctl -a -j --nocheck=standby -d ata /dev/sda": {
+				err: errors.New("protocol mismatch"),
+			},
+			// DiscoverDevices explicit SAT retry succeeds:
+			"/usr/sbin/smartctl -a -j --nocheck=standby -d sat /dev/sda": {output: []byte(satJSON)},
+		},
+	}
+	client, _ := NewClient(WithSmartctlPath("/usr/sbin/smartctl"), WithCommander(commander))
+
+	results, err := client.DiscoverDevices(context.Background())
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+
+	r := results[0]
+	assert.Equal(t, "/dev/sda", r.DevicePath)
+	assert.True(t, r.SMARTReadable, "device should be readable via SAT fallback")
+	assert.True(t, r.SATFallbackRequired, "SAT fallback should be flagged")
+	assert.Equal(t, "sat", r.DetectedProtocol)
+	assert.Equal(t, "USB Drive", r.Model)
+	assert.Equal(t, "USB123", r.Serial)
+}
+
+// TestDiscoverDevices_NotReadable verifies that SMARTReadable is false when
+// both the native protocol and the SAT fallback fail.
+func TestDiscoverDevices_NotReadable(t *testing.T) {
+	scanJSON := `{"devices":[{"name":"/dev/sda","type":"ata"}]}`
+
+	commander := &mockCommander{
+		cmds: map[string]*mockCmd{
+			"/usr/sbin/smartctl --scan-open --json": {output: []byte(scanJSON)},
+			// Both attempts fail with a plain (non-ExitError) error.
+			"/usr/sbin/smartctl -a -j --nocheck=standby -d ata /dev/sda": {
+				err: errors.New("device not accessible"),
+			},
+			"/usr/sbin/smartctl -a -j --nocheck=standby -d sat /dev/sda": {
+				err: errors.New("device not accessible"),
+			},
+		},
+	}
+	client, _ := NewClient(WithSmartctlPath("/usr/sbin/smartctl"), WithCommander(commander))
+
+	results, err := client.DiscoverDevices(context.Background())
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+
+	r := results[0]
+	assert.Equal(t, "/dev/sda", r.DevicePath)
+	assert.False(t, r.SMARTReadable)
+	assert.False(t, r.SATFallbackRequired)
+}
+
+// TestDiscoverDevices_ScanFails verifies that DiscoverDevices returns an error
+// when the device scan itself fails.
+func TestDiscoverDevices_ScanFails(t *testing.T) {
+	commander := &mockCommander{
+		cmds: map[string]*mockCmd{
+			"/usr/sbin/smartctl --scan-open --json": {err: errors.New("scan failed")},
+			"/usr/sbin/smartctl --scan --json":      {err: errors.New("scan failed")},
+		},
+	}
+	client, _ := NewClient(WithSmartctlPath("/usr/sbin/smartctl"), WithCommander(commander))
+
+	_, err := client.DiscoverDevices(context.Background())
+	assert.Error(t, err)
 }

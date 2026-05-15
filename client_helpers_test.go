@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"log/slog"
+	"os/exec"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -20,6 +21,12 @@ func newMinimalClient(t *testing.T) *Client {
 	)
 	require.NoError(t, err)
 	return client.(*Client)
+}
+
+// newMinimalTestLogger returns a discarding slog.Logger suitable for unit tests
+// that do not need to inspect log output.
+func newMinimalTestLogger() *slog.Logger {
+	return slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
 }
 
 // ─── resolveCtx ──────────────────────────────────────────────────────────────
@@ -254,4 +261,116 @@ func TestNewClient_DefaultCommanderTrue(t *testing.T) {
 	c := client.(*Client)
 	assert.True(t, c.defaultCommander,
 		"client created without WithCommander should have defaultCommander=true")
+}
+
+// ─── retrySATFallback ────────────────────────────────────────────────────────
+
+const satFallbackDevice = "/dev/sata1"
+
+const satFallbackJSON = `{
+	"json_format_version": [1, 0],
+	"smartctl": {"version": [7, 5], "exit_status": 0},
+	"device": {"name": "/dev/sata1", "type": "sat"},
+	"model_name": "SAT Test Drive",
+	"smart_status": {"passed": true}
+}`
+
+// TestGetSMARTInfo_SATFallback_Success verifies that when the initial smartctl
+// call fails with execution-failure exit bits and no cached device type exists,
+// a SAT-protocol retry is attempted and its successful result is returned.
+func TestGetSMARTInfo_SATFallback_Success(t *testing.T) {
+	commander := &mockCommander{
+		cmds: map[string]*mockCmd{
+			// Initial call (cold cache — no -d flag, with --nocheck=standby) fails.
+			"/usr/sbin/smartctl -a -j --nocheck=standby " + satFallbackDevice: {
+				err: &exec.ExitError{},
+			},
+			// SAT retry (with --nocheck=standby and explicit -d sat) succeeds.
+			"/usr/sbin/smartctl -a -j --nocheck=standby -d sat " + satFallbackDevice: {
+				output: []byte(satFallbackJSON),
+			},
+		},
+	}
+	client, err := NewClient(
+		WithSmartctlPath("/usr/sbin/smartctl"),
+		WithCommander(commander),
+	)
+	require.NoError(t, err)
+
+	info, err := client.GetSMARTInfo(context.Background(), satFallbackDevice)
+	require.NoError(t, err)
+	assert.Equal(t, satFallbackDevice, info.Device.Name)
+	assert.Equal(t, "SAT Test Drive", info.ModelName)
+
+	// Verify "sat" has been cached for subsequent calls.
+	c := client.(*Client)
+	cachedType, hasCached := c.getCachedDeviceType(satFallbackDevice)
+	assert.True(t, hasCached, "device type should be cached after SAT fallback")
+	assert.Equal(t, "sat", cachedType)
+}
+
+// TestGetSMARTInfo_SATFallback_SkippedWhenCached verifies that the SAT retry
+// is NOT performed when a device type is already present in the cache.
+func TestGetSMARTInfo_SATFallback_SkippedWhenCached(t *testing.T) {
+	mockJSON := `{
+		"device": {"name": "/dev/sata1", "type": "sat"},
+		"model_name": "Cached Drive",
+		"smart_status": {"passed": true}
+	}`
+	commander := &mockCommander{
+		cmds: map[string]*mockCmd{
+			// Cached "sat" type causes buildArgs to emit --nocheck=standby -d sat.
+			// Only this key is present; if the retry path fires incorrectly it
+			// will fail with "mock command not configured".
+			"/usr/sbin/smartctl -a -j --nocheck=standby -d sat " + satFallbackDevice: {
+				output: []byte(mockJSON),
+			},
+		},
+	}
+	client, err := NewClient(
+		WithSmartctlPath("/usr/sbin/smartctl"),
+		WithCommander(commander),
+	)
+	require.NoError(t, err)
+
+	c := client.(*Client)
+	c.setCachedDeviceType(satFallbackDevice, "sat")
+
+	info, err := client.GetSMARTInfo(context.Background(), satFallbackDevice)
+	require.NoError(t, err)
+	assert.Equal(t, "Cached Drive", info.ModelName)
+}
+
+// TestRetrySATFallback_DirectCall_Success exercises retrySATFallback directly
+// and verifies that a successful SAT response is returned with the type cached.
+func TestRetrySATFallback_DirectCall_Success(t *testing.T) {
+	commander := &mockCommander{
+		cmds: map[string]*mockCmd{
+			"/usr/sbin/smartctl -a -j --nocheck=standby -d sat " + satFallbackDevice: {
+				output: []byte(satFallbackJSON),
+			},
+		},
+	}
+	c := newMinimalClient(t)
+	c.commander = commander
+
+	info, ok := c.retrySATFallback(context.Background(), satFallbackDevice)
+	require.True(t, ok, "retrySATFallback should report success")
+	assert.Equal(t, satFallbackDevice, info.Device.Name)
+	assert.Equal(t, "SAT Test Drive", info.ModelName)
+
+	cachedType, hasCached := c.getCachedDeviceType(satFallbackDevice)
+	assert.True(t, hasCached, "device type should be cached after successful SAT fallback")
+	assert.Equal(t, "sat", cachedType)
+}
+
+// TestRetrySATFallback_DirectCall_FallsThrough verifies that retrySATFallback
+// returns (nil, false) when the SAT retry command itself fails.
+func TestRetrySATFallback_DirectCall_FallsThrough(t *testing.T) {
+	// No commands configured — the SAT command returns "mock command not configured".
+	c := newMinimalClient(t)
+
+	info, ok := c.retrySATFallback(context.Background(), satFallbackDevice)
+	assert.False(t, ok, "retrySATFallback should return false when SAT also fails")
+	assert.Nil(t, info)
 }

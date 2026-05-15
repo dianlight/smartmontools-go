@@ -14,7 +14,10 @@ A Go library that interfaces with smartmontools to monitor and manage storage de
 ## Features
 
 - 🔍 **Device Scanning**: Automatically detect available storage devices
+- � **Drive Discovery**: `DiscoverDevices` probes each drive's optimal protocol and reports SMART readability
+- 💻 **NAS Platform Support**: Automatic `smartctl` discovery across Synology DSM, QNAP, FreeBSD/TrueNAS, macOS, and standard Linux
 - 💚 **Health Monitoring**: Check device health status using SMART data
+- 🏥 **SMART Health Flags**: Full exit code bit decomposition (`ExecBits` / `HealthBits`) via `ExitCodeInfo`
 - 📊 **SMART Attributes**: Read and parse detailed SMART attributes
 - 🌡️ **Temperature Monitoring**: Track device temperature
 - ⚙️ **Self-Tests**: Initiate and monitor SMART self-tests
@@ -140,6 +143,65 @@ if err != nil {
 client, err := smartmontools.NewClient(smartmontools.WithSmartctlPath("/usr/local/sbin/smartctl"))
 if err != nil {
     log.Fatalf("Failed to create client: %v", err)
+}
+```
+
+> **NAS / embedded platforms**: `NewClient` automatically searches 11 platform-specific
+> locations (Synology DSM, QNAP Entware/QPKG, FreeBSD/TrueNAS, macOS Homebrew, NixOS, …)
+> when `smartctl` is not found in `PATH`. `WithSmartctlPath` always takes precedence.
+
+### Drive Discovery
+
+`DiscoverDevices` scans all available drives, probes each with its auto-detected
+protocol, and transparently attempts an SAT fallback for drives that cannot be read
+with their native protocol (common with USB-to-SATA bridges).
+
+```go
+results, err := client.DiscoverDevices(context.Background())
+if err != nil {
+    log.Fatalf("Discovery failed: %v", err)
+}
+
+for _, r := range results {
+    fmt.Printf("Device:   %s\n", r.DevicePath)
+    fmt.Printf("Protocol: %s\n", r.DetectedProtocol)
+    fmt.Printf("Readable: %v\n", r.SMARTReadable)
+    if r.SATFallbackRequired {
+        fmt.Println("  (SAT fallback was required)")
+    }
+    if r.SMARTReadable {
+        fmt.Printf("  Model:  %s\n", r.Model)
+        fmt.Printf("  Serial: %s\n", r.Serial)
+    }
+}
+```
+
+### Exit Code Information
+
+When `smartctl` exits with a non-zero status, `SMARTInfo.ExitCodeInfo` is populated
+with a breakdown of the exit bits:
+
+```go
+info, err := client.GetSMARTInfo(ctx, "/dev/sda")
+if err != nil {
+    log.Fatalf("Failed to get SMART info: %v", err)
+}
+
+if info.ExitCodeInfo != nil {
+    // Bits 0–2: execution failures (device open failed, SMART command failed, …)
+    if info.ExitCodeInfo.ExecBits != 0 {
+        fmt.Printf("Execution failure bits: 0x%02x\n", info.ExitCodeInfo.ExecBits)
+    }
+    // Bits 3–7: SMART health flags (disk failing, pre-failure attributes, …)
+    if info.ExitCodeInfo.HealthBits != 0 {
+        hb := info.ExitCodeInfo.HealthBits
+        fmt.Printf("SMART health bits: 0x%02x\n", hb)
+        fmt.Printf("  Disk failing:        %v\n", hb&0x08 != 0)
+        fmt.Printf("  Pre-failure attrs:   %v\n", hb&0x10 != 0)
+        fmt.Printf("  Past prefail:        %v\n", hb&0x20 != 0)
+        fmt.Printf("  Error log entries:   %v\n", hb&0x40 != 0)
+        fmt.Printf("  Self-test failures:  %v\n", hb&0x80 != 0)
+    }
 }
 ```
 
@@ -459,8 +521,9 @@ This project is licensed under the GNU General Public License v3.0 - see the [LI
 
 ## Acknowledgments
 
-- [smartmontools](https://www.smartmontools.org/) - The underlying tool that makes this library possible
-- [libgoffi](https://github.com/noctarius/libgoffi) - FFI adapter library for Go (for future enhancements)
+- [smartmontools](https://www.smartmontools.org/) — the underlying tool that makes this library possible
+- [DAB-LABS/smart-sniffer](https://github.com/DAB-LABS/smart-sniffer) — several reliability improvements in this library (multi-path binary resolution, SAT fallback, `--scan-open` → `--scan` fallback, `DiscoverDevices`, and exit code bit decomposition) were inspired by the patterns used in the smart-sniffer agent
+- [libgoffi](https://github.com/noctarius/libgoffi) — FFI adapter library for Go (for future enhancements)
 
 ## CI and Makefile
 

@@ -59,6 +59,7 @@ type SMARTInfo struct {
 	RotationRate               *int                        `json:"rotation_rate,omitempty"` // Rotation rate in RPM (0 for SSDs, >0 for HDDs, nil if not available or not applicable)
 	DiskType                   string                      `json:"-"`                       // Computed disk type: "SSD", "HDD", "NVMe", or "Unknown"
 	InStandby                  bool                        `json:"in_standby,omitempty"`    // True if device is in standby/sleep mode (ATA only)
+	ExitCodeInfo               *ExitCodeInfo               `json:"-"`                       // Computed from Smartctl.ExitStatus; nil when exit status is zero
 	SmartStatus                *SmartStatus                `json:"smart_status,omitempty"`
 	SmartSupport               *SmartSupport               `json:"smart_support,omitempty"`
 	AtaSmartData               *AtaSmartData               `json:"ata_smart_data,omitempty"`
@@ -228,3 +229,57 @@ type SmartctlInfo struct {
 
 // ProgressCallback is a function type for reporting progress
 type ProgressCallback func(progress int, status string)
+
+// ExitCodeInfo breaks down the smartctl exit status into semantic groups.
+//
+// Bit assignments (from the smartctl man page, and the JSON exit_status field):
+//
+//	ExecBits (mask 0x07, bits 0–2):
+//	  0x01  command line did not parse
+//	  0x02  device open failed
+//	  0x04  SMART or ATA command to the disk failed
+//
+//	HealthBits (mask 0xF8, bits 3–7):
+//	  0x08  SMART status check returned "DISK FAILING"
+//	  0x10  pre-failure attributes found at or below threshold
+//	  0x20  attributes were at or below threshold in the past
+//	  0x40  device error log contains records of errors
+//	  0x80  self-test log contains records of errors
+type ExitCodeInfo struct {
+	// ExecBits holds bits 0–2 (mask 0x07) of the smartctl exit status.
+	// Non-zero values indicate execution failures such as a missing binary,
+	// permission denied, or a device that could not be opened.
+	ExecBits int `json:"exec_bits"`
+
+	// HealthBits holds bits 3–7 (mask 0xF8) of the smartctl exit status.
+	// Non-zero values indicate drive health events. Each bit maps directly to
+	// the corresponding bit in the exit status (bit 3 → 0x08, bit 4 → 0x10,
+	// etc.), preserving the original semantics described in the smartctl man page.
+	HealthBits int `json:"health_bits"`
+}
+
+// DiscoveryResult holds the outcome of probing a single device during
+// DiscoverDevices. It reports whether SMART data was readable with the
+// auto-detected protocol and whether a SAT fallback was required.
+type DiscoveryResult struct {
+	// DevicePath is the path of the storage device (e.g., "/dev/sda").
+	DevicePath string `json:"device_path"`
+
+	// DetectedProtocol is the device type string used for the successful read
+	// (e.g., "ata", "sat", "nvme"). Empty if the device was not readable.
+	DetectedProtocol string `json:"detected_protocol,omitempty"`
+
+	// SMARTReadable is true when at least one SMART read attempt (native
+	// protocol or SAT fallback) produced a valid response.
+	SMARTReadable bool `json:"smart_readable"`
+
+	// SATFallbackRequired is true when the auto-detected protocol failed but
+	// a retry with the explicit -d sat flag succeeded.
+	SATFallbackRequired bool `json:"sat_fallback_required,omitempty"`
+
+	// Model is the drive model name or model family string from the SMART data.
+	Model string `json:"model,omitempty"`
+
+	// Serial is the drive serial number from the SMART data.
+	Serial string `json:"serial,omitempty"`
+}

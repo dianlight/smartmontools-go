@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // TestCheckSmartStatus_ATARunning tests checkSmartStatus with ATA device where self-test is running
@@ -345,4 +346,110 @@ func TestNvmeSmartTestLog(t *testing.T) {
 	assert.NotNil(t, info.NvmeSmartTestLog.CurrentCompletion)
 	assert.Equal(t, 45, *info.NvmeSmartTestLog.CurrentCompletion)
 	assert.True(t, info.SmartStatus.Running, "Expected self-test to be running")
+}
+
+// TestCheckSmartStatus_ExitCodeInfo_Zero tests that ExitCodeInfo is nil when exit_status is zero.
+func TestCheckSmartStatus_ExitCodeInfo_Zero(t *testing.T) {
+	smartInfo := &SMARTInfo{
+		SmartStatus: &SmartStatus{Passed: true},
+		Smartctl:    &SmartctlInfo{ExitStatus: 0},
+	}
+
+	checkSmartStatus(smartInfo)
+	assert.Nil(t, smartInfo.ExitCodeInfo, "ExitCodeInfo should be nil when exit_status is 0")
+}
+
+// TestCheckSmartStatus_ExitCodeInfo_HealthBits tests that health bits are split correctly.
+func TestCheckSmartStatus_ExitCodeInfo_HealthBits(t *testing.T) {
+	tests := []struct {
+		name             string
+		exitStatus       int
+		expectedExecBits int
+		expectedHealth   int
+	}{
+		{
+			name:             "only exec bits (device open failed)",
+			exitStatus:       0x02,
+			expectedExecBits: 0x02,
+			expectedHealth:   0x00,
+		},
+		{
+			name:             "only health bits (error log has errors = bit 6)",
+			exitStatus:       0x40,
+			expectedExecBits: 0x00,
+			expectedHealth:   0x40,
+		},
+		{
+			name:             "prefail attributes below threshold (bit 4)",
+			exitStatus:       0x10,
+			expectedExecBits: 0x00,
+			expectedHealth:   0x10,
+		},
+		{
+			name:             "multiple health bits",
+			exitStatus:       0x48, // bits 3 (0x08) + 6 (0x40)
+			expectedExecBits: 0x00,
+			expectedHealth:   0x48,
+		},
+		{
+			name:             "exec and health bits combined",
+			exitStatus:       0x42, // bit 1 (exec) + bit 6 (health)
+			expectedExecBits: 0x02,
+			expectedHealth:   0x40,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			smartInfo := &SMARTInfo{
+				SmartStatus: &SmartStatus{},
+				Smartctl:    &SmartctlInfo{ExitStatus: tt.exitStatus},
+			}
+			checkSmartStatus(smartInfo)
+
+			require.NotNil(t, smartInfo.ExitCodeInfo, "ExitCodeInfo should not be nil when exit_status != 0")
+			assert.Equal(t, tt.expectedExecBits, smartInfo.ExitCodeInfo.ExecBits,
+				"ExecBits mismatch for exit_status 0x%02x", tt.exitStatus)
+			assert.Equal(t, tt.expectedHealth, smartInfo.ExitCodeInfo.HealthBits,
+				"HealthBits mismatch for exit_status 0x%02x", tt.exitStatus)
+		})
+	}
+}
+
+// TestLogHealthBits_DeduplicationByCache verifies that logHealthBits suppresses
+// repeated identical health-bit values for the same device.
+func TestLogHealthBits_DeduplicationByCache(t *testing.T) {
+	c := &Client{
+		healthBitsCache: make(map[string]int),
+		logHandler:      newMinimalTestLogger(),
+	}
+	info := &SMARTInfo{
+		ExitCodeInfo: &ExitCodeInfo{HealthBits: 0x40},
+	}
+
+	ctx := context.Background()
+	const dev = "/dev/sda"
+
+	// First call — cache is cold, entry should be stored.
+	c.logHealthBits(ctx, dev, info)
+	c.healthBitsCacheMux.RLock()
+	val, ok := c.healthBitsCache[dev]
+	c.healthBitsCacheMux.RUnlock()
+	require.True(t, ok, "cache entry should exist after first call")
+	assert.Equal(t, 0x40, val)
+
+	// Second call with identical bits — cache hit, no update.
+	c.logHealthBits(ctx, dev, info)
+	c.healthBitsCacheMux.RLock()
+	val2 := c.healthBitsCache[dev]
+	c.healthBitsCacheMux.RUnlock()
+	assert.Equal(t, 0x40, val2, "cache value should remain unchanged")
+
+	// Third call with different bits — new entry written.
+	info2 := &SMARTInfo{ExitCodeInfo: &ExitCodeInfo{HealthBits: 0x10}}
+	c.logHealthBits(ctx, dev, info2)
+	c.healthBitsCacheMux.RLock()
+	val3 := c.healthBitsCache[dev]
+	c.healthBitsCacheMux.RUnlock()
+	assert.Equal(t, 0x10, val3, "cache should be updated when health bits change")
 }
