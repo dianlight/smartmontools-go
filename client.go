@@ -363,10 +363,13 @@ func (c *Client) GetSMARTInfo(ctx context.Context, devicePath string) (*SMARTInf
 		if exitErr, ok := err.(*exec.ExitError); ok {
 			exitCode := exitErr.ExitCode()
 
-			// Bits 0–2 (mask 0x07): execution failures — retry with -d sat on
+			// Bits 0, 2 (mask 0x05): execution failures — retry with -d sat on
 			// first contact. Handles Synology /dev/sata* paths, USB bridges, and
 			// RAID passthrough devices that fail with the auto-detected protocol.
-			if exitCode&0x07 != 0 {
+			// Bit 1 (standby) is excluded: --nocheck=standby is always passed, so
+			// bit 1 means the device is in standby mode, not a protocol mismatch.
+			// The standby check below handles it without triggering a SAT probe.
+			if exitCode&0x05 != 0 {
 				if _, hasCached := c.getCachedDeviceType(devicePath); !hasCached {
 					if info, satOK := c.retrySATFallback(ctx, devicePath); satOK {
 						return info, nil
