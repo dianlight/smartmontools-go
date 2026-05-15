@@ -2390,6 +2390,47 @@ func TestDiscoverDevices_AllReadable(t *testing.T) {
 	assert.False(t, results[1].SATFallbackRequired)
 }
 
+// TestDiscoverDevices_SATFallbackRequired_InternalPath verifies that
+// SATFallbackRequired is set when the SAT fallback runs *inside*
+// getSMARTInfoInternal (i.e. the scan returns an empty device type so nothing
+// is cached, the cold-cache auto-detection attempt fails with an ExitError, and
+// the internal retrySATFallback succeeds). Previously DiscoverDevices called
+// GetSMARTInfo and lost the internal-fallback signal; now it calls
+// getSMARTInfoInternal which surfaces the bool.
+func TestDiscoverDevices_SATFallbackRequired_InternalPath(t *testing.T) {
+	// Scan returns a device with empty type — nothing is cached.
+	scanJSON := `{"devices":[{"name":"/dev/sda","type":""}]}`
+	satJSON := `{"device":{"name":"/dev/sda","type":"sat"},"model_name":"SAT Drive","serial_number":"S999","smart_status":{"passed":true}}`
+
+	commander := &mockCommander{
+		cmds: map[string]*mockCmd{
+			"/usr/sbin/smartctl --scan-open --json": {output: []byte(scanJSON)},
+			// Cold-cache call (no -d flag) fails with an ExitError —
+			// triggers exitCode&0x05 check and the internal SAT fallback.
+			"/usr/sbin/smartctl -a -j --nocheck=standby /dev/sda": {
+				err: &exec.ExitError{},
+			},
+			// Internal SAT retry succeeds.
+			"/usr/sbin/smartctl -a -j --nocheck=standby -d sat /dev/sda": {
+				output: []byte(satJSON),
+			},
+		},
+	}
+	client, err := NewClient(WithSmartctlPath("/usr/sbin/smartctl"), WithCommander(commander))
+	require.NoError(t, err)
+
+	results, err := client.DiscoverDevices(context.Background())
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+
+	r := results[0]
+	assert.True(t, r.SMARTReadable, "device should be readable via internal SAT fallback")
+	assert.True(t, r.SATFallbackRequired, "SATFallbackRequired should be set when internal fallback was used")
+	assert.Equal(t, "sat", r.DetectedProtocol)
+	assert.Equal(t, "SAT Drive", r.Model)
+	assert.Equal(t, "S999", r.Serial)
+}
+
 // TestDiscoverDevices_SATFallbackRequired verifies that SATFallbackRequired is
 // set when the auto-detected protocol fails but the SAT retry succeeds.
 func TestDiscoverDevices_SATFallbackRequired(t *testing.T) {

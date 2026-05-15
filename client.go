@@ -353,8 +353,11 @@ func (c *Client) retrySATFallback(ctx context.Context, devicePath string) (*SMAR
 	return c.retryWithDeviceType(ctx, devicePath, "sat")
 }
 
-// GetSMARTInfo retrieves SMART information for a device
-func (c *Client) GetSMARTInfo(ctx context.Context, devicePath string) (*SMARTInfo, error) {
+// getSMARTInfoInternal is the implementation behind GetSMARTInfo. The second
+// return value is true when the internal SAT fallback (retrySATFallback) was
+// invoked and succeeded, allowing DiscoverDevices to surface SATFallbackRequired
+// without changing the public GetSMARTInfo signature.
+func (c *Client) getSMARTInfoInternal(ctx context.Context, devicePath string) (*SMARTInfo, bool, error) {
 	ctx = c.resolveCtx(ctx)
 	cmd := c.commander.Command(ctx, c.logHandler, c.smartctlPath, c.buildArgs(devicePath, "-a", "-j")...)
 	output, err := cmd.Output()
@@ -372,7 +375,7 @@ func (c *Client) GetSMARTInfo(ctx context.Context, devicePath string) (*SMARTInf
 			if exitCode&0x05 != 0 {
 				if _, hasCached := c.getCachedDeviceType(devicePath); !hasCached {
 					if info, satOK := c.retrySATFallback(ctx, devicePath); satOK {
-						return info, nil
+						return info, true, nil
 					}
 				}
 			}
@@ -395,11 +398,11 @@ func (c *Client) GetSMARTInfo(ctx context.Context, devicePath string) (*SMARTInf
 						}
 						smartInfo.DiskType = determineDiskType(&smartInfo)
 						smartInfo.SmartStatus = checkSmartStatus(&smartInfo)
-						return &smartInfo, nil
+						return &smartInfo, false, nil
 					}
 				}
 				// If parsing fails, return a minimal SMARTInfo indicating standby
-				return &SMARTInfo{InStandby: true}, nil
+				return &SMARTInfo{InStandby: true}, false, nil
 			}
 		}
 
@@ -432,7 +435,7 @@ func (c *Client) GetSMARTInfo(ctx context.Context, devicePath string) (*SMARTInf
 							c.logHandler.InfoContext(ctx, "Unknown USB bridge detected, retrying with -d sat", "devicePath", devicePath)
 						}
 						if info, ok := c.retryWithDeviceType(ctx, devicePath, deviceType); ok {
-							return info, nil
+							return info, false, nil
 						}
 						c.logHandler.ErrorContext(ctx, "Retry with device type failed", "devicePath", devicePath, "deviceType", deviceType)
 					}
@@ -442,17 +445,17 @@ func (c *Client) GetSMARTInfo(ctx context.Context, devicePath string) (*SMARTInf
 				smartInfo.SmartStatus = checkSmartStatus(&smartInfo)
 				// If device name is empty after USB bridge fallback, SMART is likely not supported
 				if smartInfo.Device.Name == "" {
-					return &smartInfo, fmt.Errorf("SMART Not Supported")
+					return &smartInfo, false, fmt.Errorf("SMART Not Supported")
 				}
-				return &smartInfo, nil
+				return &smartInfo, false, nil
 			}
 		}
-		return nil, fmt.Errorf("failed to get SMART info: %w", err)
+		return nil, false, fmt.Errorf("failed to get SMART info: %w", err)
 	}
 
 	var smartInfo SMARTInfo
 	if err := json.Unmarshal(output, &smartInfo); err != nil {
-		return nil, fmt.Errorf("failed to parse SMART info: %w", err)
+		return nil, false, fmt.Errorf("failed to parse SMART info: %w", err)
 	}
 
 	c.logSmartctlMessages(ctx, &smartInfo)
@@ -472,7 +475,13 @@ func (c *Client) GetSMARTInfo(ctx context.Context, devicePath string) (*SMARTInf
 		}
 	}
 
-	return &smartInfo, nil
+	return &smartInfo, false, nil
+}
+
+// GetSMARTInfo retrieves SMART information for a device
+func (c *Client) GetSMARTInfo(ctx context.Context, devicePath string) (*SMARTInfo, error) {
+	info, _, err := c.getSMARTInfoInternal(ctx, devicePath)
+	return info, err
 }
 
 func checkSmartStatus(sMARTInfo *SMARTInfo) *SmartStatus {
@@ -1012,9 +1021,10 @@ func (c *Client) DiscoverDevices(ctx context.Context) ([]DiscoveryResult, error)
 			DetectedProtocol: dev.Type,
 		}
 
-		info, infoErr := c.GetSMARTInfo(ctx, dev.Name)
+		info, usedSATFallback, infoErr := c.getSMARTInfoInternal(ctx, dev.Name)
 		if infoErr == nil && info != nil {
 			result.SMARTReadable = true
+			result.SATFallbackRequired = usedSATFallback
 			result.DetectedProtocol = info.Device.Type
 			result.Model = info.ModelName
 			if result.Model == "" {
