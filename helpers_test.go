@@ -47,9 +47,7 @@ func TestResolveSmartctlPath_SearchPathFallback(t *testing.T) {
 	smartctlSearchPaths = append([]string{fakeSmartctl}, orig...)
 
 	// Clear PATH so exec.LookPath cannot find anything.
-	origPath := os.Getenv("PATH")
-	t.Cleanup(func() { os.Setenv("PATH", origPath) })
-	os.Setenv("PATH", "")
+	t.Setenv("PATH", "")
 
 	got, err := resolveSmartctlPath()
 	require.NoError(t, err)
@@ -64,9 +62,7 @@ func TestResolveSmartctlPath_NotFound(t *testing.T) {
 	t.Cleanup(func() { smartctlSearchPaths = orig })
 	smartctlSearchPaths = []string{}
 
-	origPath := os.Getenv("PATH")
-	t.Cleanup(func() { os.Setenv("PATH", origPath) })
-	os.Setenv("PATH", "")
+	t.Setenv("PATH", "")
 
 	_, err := resolveSmartctlPath()
 	require.Error(t, err)
@@ -91,9 +87,7 @@ func TestResolveSmartctlPath_SkipsNonExecutable(t *testing.T) {
 	t.Cleanup(func() { smartctlSearchPaths = orig })
 	smartctlSearchPaths = []string{nonExec, execFile}
 
-	origPath := os.Getenv("PATH")
-	t.Cleanup(func() { os.Setenv("PATH", origPath) })
-	os.Setenv("PATH", "")
+	t.Setenv("PATH", "")
 
 	got, err := resolveSmartctlPath()
 	require.NoError(t, err)
@@ -117,9 +111,7 @@ func TestResolveSmartctlPath_SkipsDirectories(t *testing.T) {
 	t.Cleanup(func() { smartctlSearchPaths = orig })
 	smartctlSearchPaths = []string{dirPath, execFile}
 
-	origPath := os.Getenv("PATH")
-	t.Cleanup(func() { os.Setenv("PATH", origPath) })
-	os.Setenv("PATH", "")
+	t.Setenv("PATH", "")
 
 	got, err := resolveSmartctlPath()
 	require.NoError(t, err)
