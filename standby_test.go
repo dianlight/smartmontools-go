@@ -148,7 +148,7 @@ func TestGetSMARTInfoWithCachedATADeviceType(t *testing.T) {
 
 	// Pre-cache the device type
 	c := client.(*Client)
-	c.setCachedDeviceType("/dev/sda", "sat")
+	execBackend(t, c).setCachedDeviceType("/dev/sda", "sat")
 
 	info, err := client.GetSMARTInfo(context.Background(), "/dev/sda")
 	assert.NoError(t, err)
@@ -173,7 +173,7 @@ func TestGetSMARTInfoWithCachedNVMeDeviceType(t *testing.T) {
 
 	// Pre-cache the device type
 	c := client.(*Client)
-	c.setCachedDeviceType("/dev/nvme0n1", "nvme")
+	execBackend(t, c).setCachedDeviceType("/dev/nvme0n1", "nvme")
 
 	info, err := client.GetSMARTInfo(context.Background(), "/dev/nvme0n1")
 	assert.NoError(t, err)

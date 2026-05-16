@@ -2,8 +2,11 @@
 Package smartmontools provides Go bindings for interfacing with smartmontools
 to monitor and manage storage device health using S.M.A.R.T. data.
 
-The library wraps the smartctl command-line utility and provides a clean,
-idiomatic Go API for accessing SMART information from storage devices.
+The library provides a clean, idiomatic Go API for accessing SMART
+information from storage devices through a pluggable Backend abstraction.
+By default, NewClient uses ExecBackend, which wraps the smartctl
+command-line utility, but alternative backends can be supplied with
+WithBackend.
 
 # Go 1.26 Optimizations
 
@@ -52,6 +55,7 @@ Windows:
 	package main
 
 	import (
+	    "context"
 	    "fmt"
 	    "log"
 
@@ -59,21 +63,22 @@ Windows:
 	)
 
 	func main() {
-	    // Create a new client
+	    // Create a new client using the default ExecBackend
 	    client, err := smartmontools.NewClient()
 	    if err != nil {
 	        log.Fatal(err)
 	    }
+	    defer client.Close()
 
 	    // Scan for devices
-	    devices, err := client.ScanDevices()
+	    devices, err := client.ScanDevices(context.Background())
 	    if err != nil {
 	        log.Fatal(err)
 	    }
 
 	    // Check health of first device
 	    if len(devices) > 0 {
-	        healthy, _ := client.CheckHealth(devices[0].Name)
+	        healthy, _ := client.CheckHealth(context.Background(), devices[0].Name)
 	        if healthy {
 	            fmt.Println("Device is healthy")
 	        }

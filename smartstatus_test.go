@@ -336,7 +336,7 @@ func TestNvmeSmartTestLog(t *testing.T) {
 
 	// Pre-cache NVMe type to avoid --nocheck=standby
 	c := client.(*Client)
-	c.setCachedDeviceType("/dev/nvme0n1", "nvme")
+	execBackend(t, c).setCachedDeviceType("/dev/nvme0n1", "nvme")
 
 	info, err := client.GetSMARTInfo(context.Background(), "/dev/nvme0n1")
 	assert.NoError(t, err)
@@ -419,7 +419,7 @@ func TestCheckSmartStatus_ExitCodeInfo_HealthBits(t *testing.T) {
 // TestLogHealthBits_DeduplicationByCache verifies that logHealthBits suppresses
 // repeated identical health-bit values for the same device.
 func TestLogHealthBits_DeduplicationByCache(t *testing.T) {
-	c := &Client{
+	c := &ExecBackend{
 		healthBitsCache: make(map[string]int),
 		logHandler:      newMinimalTestLogger(),
 	}

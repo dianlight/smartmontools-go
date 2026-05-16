@@ -29,6 +29,16 @@ func newMinimalTestLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
 }
 
+// execBackend returns the ExecBackend underlying a Client created by NewClient.
+// Tests use this to access ExecBackend internals (commander, smartctlPath, etc.)
+// that previously lived on Client.
+func execBackend(t *testing.T, c *Client) *ExecBackend {
+	t.Helper()
+	eb, ok := c.backend.(*ExecBackend)
+	require.True(t, ok, "expected backend to be *ExecBackend")
+	return eb
+}
+
 // ─── resolveCtx ──────────────────────────────────────────────────────────────
 
 func TestResolveCtx_NilReturnsDefault(t *testing.T) {
@@ -55,36 +65,36 @@ func TestResolveCtx_NonNilPassthrough(t *testing.T) {
 
 func TestBuildArgs_ColdCache(t *testing.T) {
 	c := newMinimalClient(t)
-	got := c.buildArgs("/dev/sda", "-a", "-j")
+	got := execBackend(t, c).buildArgs("/dev/sda", "-a", "-j")
 	assert.Equal(t, []string{"-a", "-j", "--nocheck=standby", "/dev/sda"}, got)
 }
 
 func TestBuildArgs_CachedATA(t *testing.T) {
 	c := newMinimalClient(t)
-	c.setCachedDeviceType("/dev/sda", "ata")
-	got := c.buildArgs("/dev/sda", "-a", "-j")
+	execBackend(t, c).setCachedDeviceType("/dev/sda", "ata")
+	got := execBackend(t, c).buildArgs("/dev/sda", "-a", "-j")
 	assert.Equal(t, []string{"-a", "-j", "--nocheck=standby", "-d", "ata", "/dev/sda"}, got)
 }
 
 func TestBuildArgs_CachedSAT(t *testing.T) {
 	c := newMinimalClient(t)
-	c.setCachedDeviceType("/dev/sda", "sat")
-	got := c.buildArgs("/dev/sda", "-a", "-j")
+	execBackend(t, c).setCachedDeviceType("/dev/sda", "sat")
+	got := execBackend(t, c).buildArgs("/dev/sda", "-a", "-j")
 	assert.Equal(t, []string{"-a", "-j", "--nocheck=standby", "-d", "sat", "/dev/sda"}, got,
 		"SAT (USB-to-ATA bridge) should be treated as ATA and get --nocheck=standby")
 }
 
 func TestBuildArgs_CachedNVMe(t *testing.T) {
 	c := newMinimalClient(t)
-	c.setCachedDeviceType("/dev/nvme0", "nvme")
-	got := c.buildArgs("/dev/nvme0", "-a", "-j")
+	execBackend(t, c).setCachedDeviceType("/dev/nvme0", "nvme")
+	got := execBackend(t, c).buildArgs("/dev/nvme0", "-a", "-j")
 	assert.Equal(t, []string{"-a", "-j", "-d", "nvme", "/dev/nvme0"}, got,
 		"NVMe devices should not get --nocheck=standby")
 }
 
 func TestBuildArgs_MultipleFlags(t *testing.T) {
 	c := newMinimalClient(t)
-	got := c.buildArgs("/dev/sda", "-c", "-j")
+	got := execBackend(t, c).buildArgs("/dev/sda", "-c", "-j")
 	assert.Equal(t, []string{"-c", "-j", "--nocheck=standby", "/dev/sda"}, got,
 		"all leading flags must appear in output")
 }
@@ -94,18 +104,14 @@ func TestBuildArgs_MultipleFlags(t *testing.T) {
 func TestLogSmartctlMessages_NilSmartctl(t *testing.T) {
 	c := newMinimalClient(t)
 	assert.NotPanics(t, func() {
-		c.logSmartctlMessages(context.Background(), &SMARTInfo{})
+		execBackend(t, c).logSmartctlMessages(context.Background(), &SMARTInfo{})
 	})
 }
 
 func TestLogSmartctlMessages_SeverityRouting(t *testing.T) {
 	var buf bytes.Buffer
 	logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
-	c := &Client{
-		logHandler:      logger,
-		deviceTypeCache: make(map[string]string),
-		defaultCtx:      context.Background(),
-	}
+	c := &ExecBackend{logHandler: logger}
 
 	// Prefix with t.Name() to keep global TTL cache from absorbing these messages
 	// from other test runs within the same process.
@@ -135,11 +141,7 @@ func TestLogSmartctlMessages_SeverityRouting(t *testing.T) {
 func TestLogSmartctlMessages_Deduplication(t *testing.T) {
 	var buf bytes.Buffer
 	logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
-	c := &Client{
-		logHandler:      logger,
-		deviceTypeCache: make(map[string]string),
-		defaultCtx:      context.Background(),
-	}
+	c := &ExecBackend{logHandler: logger}
 
 	msg := t.Name() + "_dedup_msg"
 	info := &SMARTInfo{
@@ -245,9 +247,9 @@ func TestWithCommander_SetsDefaultCommanderFalse(t *testing.T) {
 	require.NoError(t, err)
 	c := client.(*Client)
 
-	assert.False(t, c.defaultCommander,
+	assert.False(t, execBackend(t, c).defaultCommander,
 		"WithCommander should set defaultCommander=false")
-	assert.Equal(t, mock, c.commander,
+	assert.Equal(t, mock, execBackend(t, c).commander,
 		"commander should be the provided mock")
 }
 
@@ -259,7 +261,7 @@ func TestNewClient_DefaultCommanderTrue(t *testing.T) {
 		t.Skipf("smartctl not available: %v", err)
 	}
 	c := client.(*Client)
-	assert.True(t, c.defaultCommander,
+	assert.True(t, execBackend(t, c).defaultCommander,
 		"client created without WithCommander should have defaultCommander=true")
 }
 
@@ -304,7 +306,7 @@ func TestGetSMARTInfo_SATFallback_Success(t *testing.T) {
 
 	// Verify "sat" has been cached for subsequent calls.
 	c := client.(*Client)
-	cachedType, hasCached := c.getCachedDeviceType(satFallbackDevice)
+	cachedType, hasCached := execBackend(t, c).getCachedDeviceType(satFallbackDevice)
 	assert.True(t, hasCached, "device type should be cached after SAT fallback")
 	assert.Equal(t, "sat", cachedType)
 }
@@ -334,7 +336,7 @@ func TestGetSMARTInfo_SATFallback_SkippedWhenCached(t *testing.T) {
 	require.NoError(t, err)
 
 	c := client.(*Client)
-	c.setCachedDeviceType(satFallbackDevice, "sat")
+	execBackend(t, c).setCachedDeviceType(satFallbackDevice, "sat")
 
 	info, err := client.GetSMARTInfo(context.Background(), satFallbackDevice)
 	require.NoError(t, err)
@@ -352,14 +354,14 @@ func TestRetrySATFallback_DirectCall_Success(t *testing.T) {
 		},
 	}
 	c := newMinimalClient(t)
-	c.commander = commander
+	execBackend(t, c).commander = commander
 
-	info, ok := c.retrySATFallback(context.Background(), satFallbackDevice)
+	info, ok := execBackend(t, c).retrySATFallback(context.Background(), satFallbackDevice)
 	require.True(t, ok, "retrySATFallback should report success")
 	assert.Equal(t, satFallbackDevice, info.Device.Name)
 	assert.Equal(t, "SAT Test Drive", info.ModelName)
 
-	cachedType, hasCached := c.getCachedDeviceType(satFallbackDevice)
+	cachedType, hasCached := execBackend(t, c).getCachedDeviceType(satFallbackDevice)
 	assert.True(t, hasCached, "device type should be cached after successful SAT fallback")
 	assert.Equal(t, "sat", cachedType)
 }
@@ -370,7 +372,7 @@ func TestRetrySATFallback_DirectCall_FallsThrough(t *testing.T) {
 	// No commands configured — the SAT command returns "mock command not configured".
 	c := newMinimalClient(t)
 
-	info, ok := c.retrySATFallback(context.Background(), satFallbackDevice)
+	info, ok := execBackend(t, c).retrySATFallback(context.Background(), satFallbackDevice)
 	assert.False(t, ok, "retrySATFallback should return false when SAT also fails")
 	assert.Nil(t, info)
 }

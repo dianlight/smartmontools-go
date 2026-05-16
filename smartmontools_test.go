@@ -51,7 +51,7 @@ func TestNewClient(t *testing.T) {
 	}
 
 	c := client.(*Client)
-	assert.NotEmpty(t, c.smartctlPath, "Expected smartctlPath to be set")
+	assert.NotEmpty(t, execBackend(t, c).smartctlPath, "Expected smartctlPath to be set")
 }
 
 func TestParseSmartctlVersion(t *testing.T) {
@@ -100,8 +100,8 @@ func TestNewClientWithPath(t *testing.T) {
 	}
 
 	c := client.(*Client)
-	if c.smartctlPath != testPath {
-		t.Errorf("Expected smartctlPath to be %s, got %s", testPath, c.smartctlPath)
+	if execBackend(t, c).smartctlPath != testPath {
+		t.Errorf("Expected smartctlPath to be %s, got %s", testPath, execBackend(t, c).smartctlPath)
 	}
 }
 
@@ -1735,7 +1735,7 @@ func TestGetSMARTInfoUnknownUSBBridgeFallback(t *testing.T) {
 
 	// Verify the device type is cached
 	c := client.(*Client)
-	cachedType, ok := c.getCachedDeviceType("/dev/usb0")
+	cachedType, ok := execBackend(t, c).getCachedDeviceType("/dev/usb0")
 	assert.True(t, ok, "Expected device type to be cached")
 	assert.Equal(t, "sat", cachedType)
 }
@@ -1768,7 +1768,7 @@ func TestGetSMARTInfoUnknownUSBBridgeFallbackAlreadyCached(t *testing.T) {
 
 	// Pre-cache the device type
 	c := client.(*Client)
-	c.setCachedDeviceType("/dev/usb0", "sat")
+	execBackend(t, c).setCachedDeviceType("/dev/usb0", "sat")
 
 	// This call should use the cached device type and not try the default first
 	info, err := client.GetSMARTInfo(context.Background(), "/dev/usb0")
@@ -1814,7 +1814,7 @@ func TestGetSMARTInfoUnknownUSBBridgeFallbackFailed(t *testing.T) {
 
 	// Verify the device type is NOT cached (fallback failed)
 	c := client.(*Client)
-	_, ok := c.getCachedDeviceType("/dev/usb0")
+	_, ok := execBackend(t, c).getCachedDeviceType("/dev/usb0")
 	assert.False(t, ok, "Expected device type not to be cached when fallback fails")
 }
 
@@ -1963,15 +1963,16 @@ func TestNewClientLoadsAddendum(t *testing.T) {
 	}
 
 	c := client.(*Client)
-	c.deviceTypeCacheMux.RLock()
-	cacheSize := len(c.deviceTypeCache)
-	c.deviceTypeCacheMux.RUnlock()
+	eb := execBackend(t, c)
+	eb.deviceTypeCacheMux.RLock()
+	cacheSize := len(eb.deviceTypeCache)
+	eb.deviceTypeCacheMux.RUnlock()
 
 	// Cache should be prepopulated with addendum entries
 	assert.GreaterOrEqual(t, cacheSize, 10, "Expected cache to be prepopulated with at least 10 entries")
 
 	// Check that a known USB bridge is in the cache
-	deviceType, ok := c.getCachedDeviceType("usb:0x152d:0x0578")
+	deviceType, ok := eb.getCachedDeviceType("usb:0x152d:0x0578")
 	assert.True(t, ok, "Expected usb:0x152d:0x0578 to be in cache")
 	assert.Equal(t, "sat", deviceType, "Expected device type 'sat'")
 }
@@ -2021,13 +2022,13 @@ func TestGetSMARTInfoWithKnownUSBBridge(t *testing.T) {
 	}
 
 	// Create client with empty cache (like test constructor)
-	client := &Client{
+	client := &ExecBackend{
 		smartctlPath:    "/usr/sbin/smartctl",
 		commander:       commander,
 		deviceTypeCache: loadDrivedbAddendum(),
+		healthBitsCache: make(map[string]int),
 		// Use NewLoggerWithLevel to obtain *tlog.Logger (tlog.WithLevel returns *slog.Logger)
 		logHandler: tlog.NewLoggerWithLevel(tlog.LevelDebug),
-		defaultCtx: context.Background(),
 	}
 
 	// First call should detect USB bridge in addendum and use sat
@@ -2277,12 +2278,12 @@ func TestGetSMARTInfoMessageCaching(t *testing.T) {
 		},
 	}
 
-	client := &Client{
+	client := &ExecBackend{
 		smartctlPath:    "/usr/sbin/smartctl",
 		commander:       commander,
 		deviceTypeCache: make(map[string]string),
+		healthBitsCache: make(map[string]int),
 		logHandler:      tlog.NewLoggerWithLevel(tlog.LevelDebug),
-		defaultCtx:      context.Background(),
 	}
 
 	// Clear any existing cache entries for our test messages
@@ -2335,12 +2336,12 @@ func TestMessageCacheSkipsAttributeCheckWarning(t *testing.T) {
 		},
 	}
 
-	client := &Client{
+	client := &ExecBackend{
 		smartctlPath:    "/usr/sbin/smartctl",
 		commander:       commander,
 		deviceTypeCache: make(map[string]string),
+		healthBitsCache: make(map[string]int),
 		logHandler:      tlog.NewLoggerWithLevel(tlog.LevelDebug),
-		defaultCtx:      context.Background(),
 	}
 
 	// Call GetSMARTInfo - should not panic or error
