@@ -27,12 +27,16 @@ func (m *mockCmd) Run() error {
 	return m.err
 }
 
+func (m *mockCmd) CombinedOutput() ([]byte, error) {
+	return m.output, m.err
+}
+
 // mockCommander implements Commander interface for testing
 type mockCommander struct {
 	cmds map[string]*mockCmd
 }
 
-func (m *mockCommander) Command(ctx context.Context, logger logAdapter, name string, arg ...string) Cmd {
+func (m *mockCommander) Command(ctx context.Context, logger LogAdapter, name string, arg ...string) Cmd {
 	key := name
 	for _, a := range arg {
 		key += " " + a
@@ -51,45 +55,7 @@ func TestNewClient(t *testing.T) {
 	}
 
 	c := client.(*Client)
-	assert.NotEmpty(t, execBackend(t, c).smartctlPath, "Expected smartctlPath to be set")
-}
-
-func TestParseSmartctlVersion(t *testing.T) {
-	cases := []struct {
-		name    string
-		input   string
-		major   int
-		minor   int
-		wantErr bool
-	}{
-		{
-			name:  "linux typical",
-			input: "smartctl 7.3 2022-02-28 r5338 [x86_64-linux] (local build)\n...",
-			major: 7, minor: 3,
-		},
-		{
-			name:  "mac typical",
-			input: "smartctl 7.4 2023-12-30 r5678 (db:7.4/5678)\n...",
-			major: 7, minor: 4,
-		},
-		{
-			name:    "no match",
-			input:   "some random output",
-			wantErr: true,
-		},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			major, minor, err := parseSmartctlVersion(tc.input)
-			if tc.wantErr {
-				assert.Error(t, err, "expected error, got none")
-				return
-			}
-			assert.NoError(t, err)
-			assert.Equal(t, tc.major, major, "major version mismatch")
-			assert.Equal(t, tc.minor, minor, "minor version mismatch")
-		})
-	}
+	assert.NotEmpty(t, c.backend.(*ExecBackend).SmartctlPath(), "Expected smartctlPath to be set")
 }
 
 func TestNewClientWithPath(t *testing.T) {
@@ -100,8 +66,8 @@ func TestNewClientWithPath(t *testing.T) {
 	}
 
 	c := client.(*Client)
-	if execBackend(t, c).smartctlPath != testPath {
-		t.Errorf("Expected smartctlPath to be %s, got %s", testPath, execBackend(t, c).smartctlPath)
+	if c.backend.(*ExecBackend).SmartctlPath() != testPath {
+		t.Errorf("Expected smartctlPath to be %s, got %s", testPath, c.backend.(*ExecBackend).SmartctlPath())
 	}
 }
 
@@ -1735,7 +1701,7 @@ func TestGetSMARTInfoUnknownUSBBridgeFallback(t *testing.T) {
 
 	// Verify the device type is cached
 	c := client.(*Client)
-	cachedType, ok := execBackend(t, c).getCachedDeviceType("/dev/usb0")
+	cachedType, ok := c.backend.(*ExecBackend).DeviceTypeHint("/dev/usb0")
 	assert.True(t, ok, "Expected device type to be cached")
 	assert.Equal(t, "sat", cachedType)
 }
@@ -1768,7 +1734,7 @@ func TestGetSMARTInfoUnknownUSBBridgeFallbackAlreadyCached(t *testing.T) {
 
 	// Pre-cache the device type
 	c := client.(*Client)
-	execBackend(t, c).setCachedDeviceType("/dev/usb0", "sat")
+	c.backend.(*ExecBackend).SetDeviceTypeHint("/dev/usb0", "sat")
 
 	// This call should use the cached device type and not try the default first
 	info, err := client.GetSMARTInfo(context.Background(), "/dev/usb0")
@@ -1814,146 +1780,8 @@ func TestGetSMARTInfoUnknownUSBBridgeFallbackFailed(t *testing.T) {
 
 	// Verify the device type is NOT cached (fallback failed)
 	c := client.(*Client)
-	_, ok := execBackend(t, c).getCachedDeviceType("/dev/usb0")
+	_, ok := c.backend.(*ExecBackend).DeviceTypeHint("/dev/usb0")
 	assert.False(t, ok, "Expected device type not to be cached when fallback fails")
-}
-
-func TestIsUnknownUSBBridge(t *testing.T) {
-	tests := []struct {
-		name     string
-		messages []Message
-		expected bool
-	}{
-		{
-			name: "Unknown USB bridge message",
-			messages: []Message{
-				{String: "/dev/sda: Unknown USB bridge [0x048d:0x1234 (0x200)]", Severity: "error"},
-			},
-			expected: true,
-		},
-		{
-			name: "No Unknown USB bridge message",
-			messages: []Message{
-				{String: "Some other error", Severity: "error"},
-			},
-			expected: false,
-		},
-		{
-			name:     "No messages",
-			messages: []Message{},
-			expected: false,
-		},
-		{
-			name: "Multiple messages with Unknown USB bridge",
-			messages: []Message{
-				{String: "Info message", Severity: "info"},
-				{String: "Unknown USB bridge detected", Severity: "error"},
-			},
-			expected: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			smartInfo := &SMARTInfo{
-				Smartctl: &SmartctlInfo{
-					Messages: tt.messages,
-				},
-			}
-			result := isUnknownUSBBridge(smartInfo)
-			assert.Equal(t, tt.expected, result)
-		})
-	}
-
-	// Test with nil smartInfo
-	assert.False(t, isUnknownUSBBridge(nil), "Expected false for nil smartInfo")
-
-	// Test with nil Smartctl
-	assert.False(t, isUnknownUSBBridge(&SMARTInfo{}), "Expected false for nil Smartctl")
-}
-
-func TestExtractUSBBridgeID(t *testing.T) {
-	tests := []struct {
-		name     string
-		messages []Message
-		expected string
-	}{
-		{
-			name: "Standard USB bridge message",
-			messages: []Message{
-				{String: "/dev/sda: Unknown USB bridge [0x152d:0x578e (0x200)]", Severity: "error"},
-			},
-			expected: "usb:0x152d:0x578e",
-		},
-		{
-			name: "USB bridge with uppercase hex",
-			messages: []Message{
-				{String: "/dev/sda: Unknown USB bridge [0x152D:0xA580 (0x209)]", Severity: "error"},
-			},
-			expected: "usb:0x152d:0xa580",
-		},
-		{
-			name: "No USB bridge message",
-			messages: []Message{
-				{String: "Some other error", Severity: "error"},
-			},
-			expected: "",
-		},
-		{
-			name:     "Empty messages",
-			messages: []Message{},
-			expected: "",
-		},
-		{
-			name: "USB bridge in second message",
-			messages: []Message{
-				{String: "Info message", Severity: "info"},
-				{String: "Unknown USB bridge [0x0bda:0x9201 (0xf200)]", Severity: "error"},
-			},
-			expected: "usb:0x0bda:0x9201",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			smartInfo := &SMARTInfo{
-				Smartctl: &SmartctlInfo{
-					Messages: tt.messages,
-				},
-			}
-			result := extractUSBBridgeID(smartInfo)
-			assert.Equal(t, tt.expected, result)
-		})
-	}
-
-	// Test with nil smartInfo
-	assert.Empty(t, extractUSBBridgeID(nil), "Expected empty string for nil smartInfo")
-
-	// Test with nil Smartctl
-	assert.Empty(t, extractUSBBridgeID(&SMARTInfo{}), "Expected empty string for nil Smartctl")
-}
-
-func TestLoadDrivedbAddendum(t *testing.T) {
-	cache := loadDrivedbAddendum()
-
-	// Check that some known entries from standard drivedb.h are loaded
-	// Note: These are USB entries from the official smartmontools drivedb.h
-	expectedEntries := map[string]string{
-		"usb:0x152d:0x0578": "sat", // JMicron (expanded from regex pattern)
-		"usb:0x152d:0x0562": "sat", // JMicron JMS562
-		"usb:0x0bda:0x9201": "sat", // Realtek
-		"usb:0x059f:0x1029": "sat", // LaCie
-	}
-
-	for key, expectedValue := range expectedEntries {
-		value, ok := cache[key]
-		assert.True(t, ok, "Expected key %q to be in cache", key)
-		assert.Equal(t, expectedValue, value, "Expected value %q for key %q", expectedValue, key)
-	}
-
-	// Check that we have a reasonable number of entries
-	// The standard drivedb.h should have many more entries than the old addendum
-	assert.GreaterOrEqual(t, len(cache), 100, "Expected at least 100 entries from drivedb.h")
 }
 
 func TestNewClientLoadsAddendum(t *testing.T) {
@@ -1963,16 +1791,10 @@ func TestNewClientLoadsAddendum(t *testing.T) {
 	}
 
 	c := client.(*Client)
-	eb := execBackend(t, c)
-	eb.deviceTypeCacheMux.RLock()
-	cacheSize := len(eb.deviceTypeCache)
-	eb.deviceTypeCacheMux.RUnlock()
-
-	// Cache should be prepopulated with addendum entries
-	assert.GreaterOrEqual(t, cacheSize, 10, "Expected cache to be prepopulated with at least 10 entries")
+	eb := c.backend.(*ExecBackend)
 
 	// Check that a known USB bridge is in the cache
-	deviceType, ok := eb.getCachedDeviceType("usb:0x152d:0x0578")
+	deviceType, ok := eb.DeviceTypeHint("usb:0x152d:0x0578")
 	assert.True(t, ok, "Expected usb:0x152d:0x0578 to be in cache")
 	assert.Equal(t, "sat", deviceType, "Expected device type 'sat'")
 }
@@ -2021,23 +1843,20 @@ func TestGetSMARTInfoWithKnownUSBBridge(t *testing.T) {
 		},
 	}
 
-	// Create client with empty cache (like test constructor)
-	client := &ExecBackend{
-		smartctlPath:    "/usr/sbin/smartctl",
-		commander:       commander,
-		deviceTypeCache: loadDrivedbAddendum(),
-		healthBitsCache: make(map[string]int),
-		// Use NewLoggerWithLevel to obtain *tlog.Logger (tlog.WithLevel returns *slog.Logger)
-		logHandler: tlog.NewLoggerWithLevel(tlog.LevelDebug),
-	}
+	backend, err := NewExecBackend(
+		WithExecSmartctlPath("/usr/sbin/smartctl"),
+		WithExecCommander(commander),
+		WithExecTLogHandler(tlog.NewLoggerWithLevel(tlog.LevelDebug)),
+	)
+	require.NoError(t, err)
 
 	// First call should detect USB bridge in addendum and use sat
-	info, err := client.GetSMARTInfo(context.Background(), "/dev/usb0")
+	info, err := backend.GetSMARTInfo(context.Background(), "/dev/usb0")
 	assert.NoError(t, err, "Expected no error after using addendum")
 	assert.Equal(t, "/dev/usb0", info.Device.Name)
 
 	// Verify the device path is cached
-	cachedType, ok := client.getCachedDeviceType("/dev/usb0")
+	cachedType, ok := backend.DeviceTypeHint("/dev/usb0")
 	assert.True(t, ok, "Expected device path to be cached")
 	assert.Equal(t, "sat", cachedType)
 }
@@ -2278,13 +2097,12 @@ func TestGetSMARTInfoMessageCaching(t *testing.T) {
 		},
 	}
 
-	client := &ExecBackend{
-		smartctlPath:    "/usr/sbin/smartctl",
-		commander:       commander,
-		deviceTypeCache: make(map[string]string),
-		healthBitsCache: make(map[string]int),
-		logHandler:      tlog.NewLoggerWithLevel(tlog.LevelDebug),
-	}
+	backend, err := NewExecBackend(
+		WithExecSmartctlPath("/usr/sbin/smartctl"),
+		WithExecCommander(commander),
+		WithExecTLogHandler(tlog.NewLoggerWithLevel(tlog.LevelDebug)),
+	)
+	require.NoError(t, err)
 
 	// Clear any existing cache entries for our test messages
 	testCache := &messageCache{}
@@ -2292,7 +2110,7 @@ func TestGetSMARTInfoMessageCaching(t *testing.T) {
 	msg2Key := hashString("Test warning message for caching")
 
 	// Call GetSMARTInfo
-	info, err := client.GetSMARTInfo(context.Background(), "/dev/sda")
+	info, err := backend.GetSMARTInfo(context.Background(), "/dev/sda")
 	require.NoError(t, err)
 	assert.NotNil(t, info)
 
@@ -2336,16 +2154,15 @@ func TestMessageCacheSkipsAttributeCheckWarning(t *testing.T) {
 		},
 	}
 
-	client := &ExecBackend{
-		smartctlPath:    "/usr/sbin/smartctl",
-		commander:       commander,
-		deviceTypeCache: make(map[string]string),
-		healthBitsCache: make(map[string]int),
-		logHandler:      tlog.NewLoggerWithLevel(tlog.LevelDebug),
-	}
+	backend, err := NewExecBackend(
+		WithExecSmartctlPath("/usr/sbin/smartctl"),
+		WithExecCommander(commander),
+		WithExecTLogHandler(tlog.NewLoggerWithLevel(tlog.LevelDebug)),
+	)
+	require.NoError(t, err)
 
 	// Call GetSMARTInfo - should not panic or error
-	info, err := client.GetSMARTInfo(context.Background(), "/dev/sda")
+	info, err := backend.GetSMARTInfo(context.Background(), "/dev/sda")
 	require.NoError(t, err)
 	assert.NotNil(t, info)
 

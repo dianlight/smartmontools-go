@@ -1,4 +1,4 @@
-package smartmontools
+package exec
 
 import "strings"
 
@@ -47,4 +47,34 @@ func determineDiskType(info *SMARTInfo) string {
 
 	// If we can't determine, return Unknown
 	return "Unknown"
+}
+
+func checkSmartStatus(smartInfo *SMARTInfo) *SmartStatus {
+	if smartInfo.SmartStatus == nil {
+		smartInfo.SmartStatus = &SmartStatus{}
+	}
+
+	var damaged, critical bool
+	if smartInfo.Smartctl != nil {
+		exitStatus := smartInfo.Smartctl.ExitStatus
+		damaged = exitStatus&0x08 != 0
+		critical = exitStatus&0x10 != 0
+
+		if exitStatus != 0 {
+			smartInfo.ExitCodeInfo = &ExitCodeInfo{
+				ExecBits:   exitStatus & 0x07,
+				HealthBits: exitStatus & 0xF8,
+			}
+		}
+	}
+
+	status := &SmartStatus{Passed: smartInfo.SmartStatus.Passed, Damaged: damaged, Critical: critical}
+	switch {
+	case smartInfo.AtaSmartData != nil && smartInfo.AtaSmartData.SelfTest != nil && smartInfo.AtaSmartData.SelfTest.Status != nil:
+		v := smartInfo.AtaSmartData.SelfTest.Status.Value
+		status.Running = v >= 240 && v <= 253
+	case smartInfo.NvmeSmartTestLog != nil:
+		status.Running = smartInfo.NvmeSmartTestLog.CurrentOpeation != nil && *smartInfo.NvmeSmartTestLog.CurrentOpeation != 0
+	}
+	return status
 }

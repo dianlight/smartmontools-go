@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Accepted
 
 ## Context
 
@@ -71,31 +71,23 @@ type Backend interface {
 }
 ```
 
-### Architecture Overview
+### Implemented Layout
 
+```text
+smartmontools/
+├── client.go              # public facade and client orchestration
+├── backend.go             # public aliases for backend interfaces
+├── commander.go           # public aliases for command interfaces
+├── types.go               # public aliases for domain types
+├── exec_compat.go         # backward-compatible ExecBackend wrappers
+├── internal/types/        # shared types, interfaces, constants, helpers
+└── backends/exec/         # smartctl-backed backend implementation
 ```
-┌─────────────────────────────────────────────────────┐
-│                  Public API (SmartClient)            │
-│                 client.go — unchanged                │
-└─────────────────────────┬───────────────────────────┘
-                          │ delegates to
-                          ▼
-┌─────────────────────────────────────────────────────┐
-│                  Backend interface                   │
-│  (scan, getInfo, checkHealth, runTest, enable, …)   │
-└────┬───────────┬──────────────┬──────────┬──────────┘
-     │           │              │          │
-     ▼           ▼              ▼          ▼
-┌─────────┐ ┌─────────┐ ┌──────────┐ ┌──────────────┐
-│  Exec   │ │ Ioctl   │ │   Lib    │ │    Shadow    │
-│ Backend │ │ Backend │ │ Backend  │ │   Backend    │
-│(current)│ │(native) │ │(CGO/FFI) │ │ (2 backends) │
-└────┬────┘ └────┬────┘ └────┬─────┘ └──────┬───────┘
-     │           │           │              │
-     ▼           ▼           ▼         (primary + secondary)
-  smartctl    ioctl/     libsmartctl
-  binary      kernel      .so/.dylib
-```
+
+This layout breaks the circular dependency between the root package and the
+exec backend by moving shared types and interfaces into `internal/types`. The
+root package depends on `internal/types` and `backends/exec`, while
+`backends/exec` depends only on `internal/types` and external packages.
 
 ### Backend Selection via ClientOption
 

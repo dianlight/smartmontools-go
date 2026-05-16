@@ -1,4 +1,4 @@
-package smartmontools
+package exec
 
 import (
 	"context"
@@ -47,8 +47,8 @@ var smartctlSearchPaths = []string{
 	"/run/current-system/sw/sbin/smartctl",
 }
 
-// ExecBackendOption configures an [ExecBackend].
-type ExecBackendOption func(*ExecBackend)
+// Option configures an [ExecBackend].
+type Option func(*ExecBackend)
 
 // ExecBackend is a [Backend] implementation that shells out to the smartctl binary.
 type ExecBackend struct {
@@ -59,42 +59,47 @@ type ExecBackend struct {
 	deviceTypeCacheMux sync.RWMutex
 	healthBitsCache    map[string]int
 	healthBitsCacheMux sync.RWMutex
-	logHandler         logAdapter
+	logHandler         LogAdapter
 }
 
-// WithExecSmartctlPath sets a custom path to the smartctl binary.
-func WithExecSmartctlPath(path string) ExecBackendOption {
+// WithSmartctlPath sets a custom path to the smartctl binary.
+func WithSmartctlPath(path string) Option {
 	return func(b *ExecBackend) {
 		b.smartctlPath = path
 	}
 }
 
-// WithExecCommander sets a custom commander, typically for testing.
-func WithExecCommander(commander Commander) ExecBackendOption {
+// WithCommander sets a custom commander, typically for testing.
+func WithCommander(commander Commander) Option {
 	return func(b *ExecBackend) {
 		b.commander = commander
 		b.defaultCommander = false
 	}
 }
 
-// WithExecSlogHandler sets a custom slog.Logger for the backend.
-func WithExecSlogHandler(logger *slog.Logger) ExecBackendOption {
-	return withExecLogHandler(logger)
+// WithSlogHandler sets a custom slog.Logger for the backend.
+func WithSlogHandler(logger *slog.Logger) Option {
+	return withLogHandler(logger)
 }
 
-// WithExecTLogHandler sets a custom tlog.Logger for the backend.
-func WithExecTLogHandler(logger *tlog.Logger) ExecBackendOption {
-	return withExecLogHandler(logger)
+// WithTLogHandler sets a custom tlog.Logger for the backend.
+func WithTLogHandler(logger *tlog.Logger) Option {
+	return withLogHandler(logger)
 }
 
-func withExecLogHandler(logger logAdapter) ExecBackendOption {
+// WithLogHandler sets a custom logger adapter for the backend.
+func WithLogHandler(logger LogAdapter) Option {
+	return withLogHandler(logger)
+}
+
+func withLogHandler(logger LogAdapter) Option {
 	return func(b *ExecBackend) {
 		b.logHandler = logger
 	}
 }
 
-// NewExecBackend creates a new exec-backed SMART backend.
-func NewExecBackend(opts ...ExecBackendOption) (*ExecBackend, error) {
+// New creates a new exec-backed SMART backend.
+func New(opts ...Option) (*ExecBackend, error) {
 	b := &ExecBackend{
 		commander:        execCommander{},
 		defaultCommander: true,
@@ -121,7 +126,7 @@ func NewExecBackend(opts ...ExecBackendOption) (*ExecBackend, error) {
 }
 
 // resolveSmartctlPath searches PATH and then platform-specific fallback
-// locations for a usable smartctl binary. The WithExecSmartctlPath option always
+// locations for a usable smartctl binary. The WithSmartctlPath option always
 // takes precedence and bypasses this function entirely.
 func resolveSmartctlPath() (string, error) {
 	// 1. Prefer PATH so that user-installed or version-managed binaries win.
@@ -203,6 +208,26 @@ func (b *ExecBackend) Name() string {
 // Close releases resources held by the backend.
 func (b *ExecBackend) Close() error {
 	return nil
+}
+
+// SmartctlPath returns the resolved path to the smartctl binary.
+func (b *ExecBackend) SmartctlPath() string {
+	return b.smartctlPath
+}
+
+// SetDeviceTypeHint stores a device type hint in the backend cache.
+func (b *ExecBackend) SetDeviceTypeHint(path, deviceType string) {
+	b.setCachedDeviceType(path, deviceType)
+}
+
+// DeviceTypeHint returns a cached device type hint for the provided path.
+func (b *ExecBackend) DeviceTypeHint(path string) (string, bool) {
+	return b.getCachedDeviceType(path)
+}
+
+// NewExecBackend preserves the legacy constructor name.
+func NewExecBackend(opts ...Option) (*ExecBackend, error) {
+	return New(opts...)
 }
 
 // ScanDevices scans for available storage devices.

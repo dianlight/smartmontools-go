@@ -7,20 +7,18 @@ import (
 	"slices"
 	"time"
 
+	smtypes "github.com/dianlight/smartmontools-go/internal/types"
 	"github.com/dianlight/tlog"
 )
 
-// SMART attribute IDs for SSD detection and wear-level computation
+// SMART attribute IDs for SSD detection and wear-level computation.
 const (
-	SmartAttrSSDLifeUsed       = 173 // SSD Life Used — raw value is percent used (0 = new)
-	SmartAttrWearLevelingCount = 177 // Wear Leveling Count — normalized value is remaining life (100 = new)
-	SmartAttrSSDLifeLeft       = 231 // SSD Life Left — normalized value is remaining life (100 = new)
-	SmartAttrSandForceInternal = 233 // SandForce Internal (SSD-specific, used for drive-type detection)
-	SmartAttrTotalLBAsWritten  = 234 // Total LBAs Written (SSD-specific, used for drive-type detection)
+	SmartAttrSSDLifeUsed       = smtypes.SmartAttrSSDLifeUsed
+	SmartAttrWearLevelingCount = smtypes.SmartAttrWearLevelingCount
+	SmartAttrSSDLifeLeft       = smtypes.SmartAttrSSDLifeLeft
+	SmartAttrSandForceInternal = smtypes.SmartAttrSandForceInternal
+	SmartAttrTotalLBAsWritten  = smtypes.SmartAttrTotalLBAsWritten
 )
-
-// Valid self-test types for SMART testing
-var validSelfTestTypes = []string{"short", "long", "conveyance", "offline"}
 
 // ClientOption is a function that configures a Client.
 type ClientOption func(*Client)
@@ -73,18 +71,12 @@ func WithBackend(backend Backend) ClientOption {
 	}
 }
 
-// logAdapter captures the logging methods used by this package.
-type logAdapter interface {
-	Debug(msg string, args ...any)
-	DebugContext(ctx context.Context, msg string, args ...any)
-	InfoContext(ctx context.Context, msg string, args ...any)
-	WarnContext(ctx context.Context, msg string, args ...any)
-	ErrorContext(ctx context.Context, msg string, args ...any)
-}
+// LogAdapter captures the logging methods used by this package.
+type LogAdapter = smtypes.LogAdapter
 
 var (
-	_ logAdapter = (*tlog.Logger)(nil)
-	_ logAdapter = (*slog.Logger)(nil)
+	_ LogAdapter = (*tlog.Logger)(nil)
+	_ LogAdapter = (*slog.Logger)(nil)
 )
 
 // SmartClient interface defines the methods for interacting with smartmontools.
@@ -110,7 +102,7 @@ type SmartClient interface {
 // to a pluggable [Backend]. The default backend is [ExecBackend].
 type Client struct {
 	backend         Backend
-	logHandler      logAdapter // staging: propagated to ExecBackend during NewClient
+	logHandler      LogAdapter // staging: propagated to ExecBackend during NewClient
 	defaultCtx      context.Context
 	pendingExecOpts []ExecBackendOption // staging: collected during option application, consumed by NewClient
 }
@@ -129,7 +121,7 @@ func NewClient(opts ...ClientOption) (SmartClient, error) {
 		opt(client)
 	}
 	if client.backend == nil {
-		execOpts := append([]ExecBackendOption{withExecLogHandler(client.logHandler)}, client.pendingExecOpts...)
+		execOpts := append([]ExecBackendOption{WithExecLogHandler(client.logHandler)}, client.pendingExecOpts...)
 		backend, err := NewExecBackend(execOpts...)
 		if err != nil {
 			return nil, err
@@ -182,7 +174,7 @@ func (c *Client) RunSelfTest(ctx context.Context, devicePath string, testType st
 func (c *Client) RunSelfTestWithProgress(ctx context.Context, devicePath string, testType string, callback ProgressCallback) error {
 	ctx = c.resolveCtx(ctx)
 	// Valid test types: short, long, conveyance, offline
-	if !slices.Contains(validSelfTestTypes, testType) {
+	if !slices.Contains(smtypes.ValidSelfTestTypes, testType) {
 		return fmt.Errorf("invalid test type: %s (must be one of: short, long, conveyance, offline)", testType)
 	}
 
@@ -325,40 +317,6 @@ func (c *Client) GetAvailableSelfTests(ctx context.Context, devicePath string) (
 	return c.backend.GetAvailableSelfTests(c.resolveCtx(ctx), devicePath)
 }
 
-// populateSelfTestInfo fills dst with available test types and durations extracted
-// from ATA and NVMe capability data. It is shared by GetAvailableSelfTests and
-// GetAvailableSelfTestsFromInfo to avoid duplicating the extraction logic.
-func populateSelfTestInfo(info *SelfTestInfo, ata *AtaSmartData, nvmeCaps *NvmeControllerCapabilities, nvmeOptional *NvmeOptionalAdminCommands) {
-	if ata != nil && ata.Capabilities != nil {
-		caps := ata.Capabilities
-		if caps.SelfTestsSupported {
-			info.Available = append(info.Available, "short", "long")
-		}
-		if caps.ConveyanceSelfTestSupported {
-			info.Available = append(info.Available, "conveyance")
-		}
-		if caps.ExecOfflineImmediate {
-			info.Available = append(info.Available, "offline")
-		}
-		if ata.SelfTest != nil && ata.SelfTest.PollingMinutes != nil {
-			pm := ata.SelfTest.PollingMinutes
-			if pm.Short > 0 {
-				info.Durations["short"] = pm.Short
-			}
-			if pm.Extended > 0 {
-				info.Durations["long"] = pm.Extended
-			}
-			if pm.Conveyance > 0 {
-				info.Durations["conveyance"] = pm.Conveyance
-			}
-		}
-	}
-	// NVMe — combine both capability fields to avoid appending "short" twice.
-	if (nvmeCaps != nil && nvmeCaps.SelfTest) || (nvmeOptional != nil && nvmeOptional.SelfTest) {
-		info.Available = append(info.Available, "short")
-	}
-}
-
 // GetAvailableSelfTestsFromInfo extracts available self-test types and their durations
 // from a SMARTInfo struct without performing additional disk I/O. Applications that
 // already hold a cached SMARTInfo (from GetSMARTInfo) should use this method instead of
@@ -391,7 +349,7 @@ func (c *Client) GetAvailableSelfTestsFromInfo(smartInfo *SMARTInfo) *SelfTestIn
 	if smartInfo == nil {
 		return info
 	}
-	populateSelfTestInfo(info, smartInfo.AtaSmartData, smartInfo.NvmeControllerCapabilities, nil)
+	smtypes.PopulateSelfTestInfo(info, smartInfo.AtaSmartData, smartInfo.NvmeControllerCapabilities, nil)
 	return info
 }
 
@@ -529,36 +487,4 @@ func (c *Client) DiscoverDevices(ctx context.Context) ([]DiscoveryResult, error)
 		results = append(results, result)
 	}
 	return results, nil
-}
-
-func checkSmartStatus(sMARTInfo *SMARTInfo) *SmartStatus {
-	if sMARTInfo.SmartStatus == nil {
-		sMARTInfo.SmartStatus = &SmartStatus{}
-	}
-
-	var damaged, critical bool
-	if sMARTInfo.Smartctl != nil {
-		exitStatus := sMARTInfo.Smartctl.ExitStatus
-		damaged = exitStatus&0x08 != 0
-		critical = exitStatus&0x10 != 0
-
-		// Populate ExitCodeInfo so consumers can inspect exit status bits
-		// programmatically without parsing error strings.
-		if exitStatus != 0 {
-			sMARTInfo.ExitCodeInfo = &ExitCodeInfo{
-				ExecBits:   exitStatus & 0x07,
-				HealthBits: exitStatus & 0xF8,
-			}
-		}
-	}
-
-	s := &SmartStatus{Passed: sMARTInfo.SmartStatus.Passed, Damaged: damaged, Critical: critical}
-	switch {
-	case sMARTInfo.AtaSmartData != nil && sMARTInfo.AtaSmartData.SelfTest != nil && sMARTInfo.AtaSmartData.SelfTest.Status != nil:
-		v := sMARTInfo.AtaSmartData.SelfTest.Status.Value
-		s.Running = v >= 240 && v <= 253
-	case sMARTInfo.NvmeSmartTestLog != nil:
-		s.Running = sMARTInfo.NvmeSmartTestLog.CurrentOpeation != nil && *sMARTInfo.NvmeSmartTestLog.CurrentOpeation != 0
-	}
-	return s
 }

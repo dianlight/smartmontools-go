@@ -1,4 +1,4 @@
-package smartmontools
+package exec
 
 import (
 	"context"
@@ -25,8 +25,8 @@ func TestExecBackend_Close(t *testing.T) {
 
 func TestNewExecBackend_WithCommander(t *testing.T) {
 	backend, err := NewExecBackend(
-		WithExecSmartctlPath("/usr/sbin/smartctl"),
-		WithExecCommander(&mockCommander{cmds: map[string]*mockCmd{}}),
+		WithSmartctlPath("/usr/sbin/smartctl"),
+		WithCommander(&mockCommander{cmds: map[string]*mockCmd{}}),
 	)
 	require.NoError(t, err)
 	assert.Equal(t, "/usr/sbin/smartctl", backend.smartctlPath)
@@ -51,8 +51,8 @@ func TestExecBackend_DiscoverDevices(t *testing.T) {
 		},
 	}
 	backend, err := NewExecBackend(
-		WithExecSmartctlPath("/usr/sbin/smartctl"),
-		WithExecCommander(commander),
+		WithSmartctlPath("/usr/sbin/smartctl"),
+		WithCommander(commander),
 	)
 	require.NoError(t, err)
 

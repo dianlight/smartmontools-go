@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-05-16
+
+### Breaking Changes
+- `ExecBackend`, `ExecBackendOption`, `NewExecBackend`, and related `WithExec*` options are now implemented by the `backends/exec` package. The root package keeps backward-compatible aliases and wrappers.
+- `Commander.Command()` now accepts the exported `LogAdapter` type, making the interface implementable outside this module.
+
+### Added
+- `backends/exec/` package containing the `ExecBackend` implementation
+- `internal/types/` shared type hub for domain types, interfaces, constants, and helpers
+- `ExecBackend.SmartctlPath()` accessor
+- `ExecBackend.SetDeviceTypeHint(path, deviceType string)` cache seeding helper
+- `ExecBackend.DeviceTypeHint(path string) (string, bool)` cache inspection helper
+- `backends/exec.WithLogHandler(logger LogAdapter) Option`
+- Exported `LogAdapter` type in the root package
+
+### Changed
+- The root package is now a thin facade over `internal/types` and `backends/exec`
+- Exec-specific helpers and drivedb parsing moved out of the root package
+
+##  [v0.3.1] — 2025-05-16
+
 ### Added
 
 - **Multi-path `smartctl` resolution** (`helpers.go`): `NewClient` now searches 11
