@@ -42,3 +42,11 @@ func WithExecSlogHandler(logger *slog.Logger) ExecBackendOption {
 func WithExecTLogHandler(logger *tlog.Logger) ExecBackendOption {
 	return smexec.WithTLogHandler(logger)
 }
+
+// DrivedbUpstreamCommit is the upstream smartmontools commit SHA from which
+// the embedded drivedb.h was taken. It is re-exported from the exec backend.
+const DrivedbUpstreamCommit = smexec.DrivedbUpstreamCommit
+
+// DrivedbUpstreamDate is the commit date of DrivedbUpstreamCommit in RFC 3339 format.
+// It is re-exported from the exec backend.
+const DrivedbUpstreamDate = smexec.DrivedbUpstreamDate

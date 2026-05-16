@@ -2,5 +2,39 @@
     "$schema": "https://docs.renovatebot.com/renovate-schema.json",
     "extends": [
         "config:recommended"
+    ],
+    "customDatasources": {
+        "smartmontools-drivedb": {
+            "defaultRegistryUrlTemplate": "https://api.github.com/repos/smartmontools/smartmontools/commits?path=lib%2Fdrivedb.h&per_page=1",
+            "transformTemplates": [
+                "{\"releases\":[{\"version\":$[0].sha,\"releaseTimestamp\":$[0].commit.committer.date,\"sourceUrl\":\"https://github.com/smartmontools/smartmontools\",\"changelogUrl\":\"https://github.com/smartmontools/smartmontools/commits/master/lib/drivedb.h\"}]}"
+            ]
+        }
+    },
+    "customManagers": [
+        {
+            "customType": "regex",
+            "fileMatch": ["^backends/exec/drivedb_version\\.go$"],
+            "matchStrings": ["DrivedbUpstreamCommit\\s*=\\s*\"(?<currentValue>[a-f0-9]{40})\""],
+            "datasourceTemplate": "custom.smartmontools-drivedb",
+            "packageNameTemplate": "smartmontools/drivedb",
+            "versioningTemplate": "loose"
+        }
+    ],
+    "packageRules": [
+        {
+            "matchManagers": ["gomod"],
+            "groupName": "Go dependencies",
+            "schedule": ["before 8am on monday"]
+        },
+        {
+            "matchDatasources": ["custom.smartmontools-drivedb"],
+            "commitMessageTopic": "drivedb.h",
+            "commitMessageAction": "update",
+            "prTitle": "🗃️ chore(drivedb): update drivedb.h to {{newVersion}}",
+            "labels": ["drivedb", "dependencies", "automated"],
+            "branchName": "drivedb/renovate-{{{slugifiedDepName}}}",
+            "automerge": false
+        }
     ]
 }
