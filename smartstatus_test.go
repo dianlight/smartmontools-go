@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // TestCheckSmartStatus_ATARunning tests checkSmartStatus with ATA device where self-test is running
@@ -345,4 +346,258 @@ func TestNvmeSmartTestLog(t *testing.T) {
 	assert.NotNil(t, info.NvmeSmartTestLog.CurrentCompletion)
 	assert.Equal(t, 45, *info.NvmeSmartTestLog.CurrentCompletion)
 	assert.True(t, info.SmartStatus.Running, "Expected self-test to be running")
+}
+
+// TestCheckSmartStatus_ExitCodeInfo_Zero tests that ExitCodeInfo is nil when exit_status is zero.
+func TestCheckSmartStatus_ExitCodeInfo_Zero(t *testing.T) {
+	smartInfo := &SMARTInfo{
+		SmartStatus: &SmartStatus{Passed: true},
+		Smartctl:    &SmartctlInfo{ExitStatus: 0},
+	}
+
+	checkSmartStatus(smartInfo)
+	assert.Nil(t, smartInfo.ExitCodeInfo, "ExitCodeInfo should be nil when exit_status is 0")
+}
+
+// TestCheckSmartStatus_ExitCodeInfo_HealthBits tests that health bits are split correctly.
+func TestCheckSmartStatus_ExitCodeInfo_HealthBits(t *testing.T) {
+	tests := []struct {
+		name             string
+		exitStatus       int
+		expectedExecBits int
+		expectedHealth   int
+	}{
+		{
+			name:             "only exec bits (device open failed)",
+			exitStatus:       0x02,
+			expectedExecBits: 0x02,
+			expectedHealth:   0x00,
+		},
+		{
+			name:             "only health bits (error log has errors = bit 6)",
+			exitStatus:       0x40,
+			expectedExecBits: 0x00,
+			expectedHealth:   0x40,
+		},
+		{
+			name:             "prefail attributes below threshold (bit 4)",
+			exitStatus:       0x10,
+			expectedExecBits: 0x00,
+			expectedHealth:   0x10,
+		},
+		{
+			name:             "multiple health bits",
+			exitStatus:       0x48, // bits 3 (0x08) + 6 (0x40)
+			expectedExecBits: 0x00,
+			expectedHealth:   0x48,
+		},
+		{
+			name:             "exec and health bits combined",
+			exitStatus:       0x42, // bit 1 (exec) + bit 6 (health)
+			expectedExecBits: 0x02,
+			expectedHealth:   0x40,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			smartInfo := &SMARTInfo{
+				SmartStatus: &SmartStatus{},
+				Smartctl:    &SmartctlInfo{ExitStatus: tt.exitStatus},
+			}
+			checkSmartStatus(smartInfo)
+
+			require.NotNil(t, smartInfo.ExitCodeInfo, "ExitCodeInfo should not be nil when exit_status != 0")
+			assert.Equal(t, tt.expectedExecBits, smartInfo.ExitCodeInfo.ExecBits,
+				"ExecBits mismatch for exit_status 0x%02x", tt.exitStatus)
+			assert.Equal(t, tt.expectedHealth, smartInfo.ExitCodeInfo.HealthBits,
+				"HealthBits mismatch for exit_status 0x%02x", tt.exitStatus)
+		})
+	}
+}
+
+// TestLogHealthBits_DeduplicationByCache verifies that logHealthBits suppresses
+// repeated identical health-bit values for the same device.
+func TestLogHealthBits_DeduplicationByCache(t *testing.T) {
+	c := &Client{
+		healthBitsCache: make(map[string]int),
+		logHandler:      newMinimalTestLogger(),
+	}
+	info := &SMARTInfo{
+		ExitCodeInfo: &ExitCodeInfo{HealthBits: 0x40},
+	}
+
+	ctx := context.Background()
+	const dev = "/dev/sda"
+
+	// First call — cache is cold, entry should be stored.
+	c.logHealthBits(ctx, dev, info)
+	c.healthBitsCacheMux.RLock()
+	val, ok := c.healthBitsCache[dev]
+	c.healthBitsCacheMux.RUnlock()
+	require.True(t, ok, "cache entry should exist after first call")
+	assert.Equal(t, 0x40, val)
+
+	// Second call with identical bits — cache hit, no update.
+	c.logHealthBits(ctx, dev, info)
+	c.healthBitsCacheMux.RLock()
+	val2 := c.healthBitsCache[dev]
+	c.healthBitsCacheMux.RUnlock()
+	assert.Equal(t, 0x40, val2, "cache value should remain unchanged")
+
+	// Third call with different bits — new entry written.
+	info2 := &SMARTInfo{ExitCodeInfo: &ExitCodeInfo{HealthBits: 0x10}}
+	c.logHealthBits(ctx, dev, info2)
+	c.healthBitsCacheMux.RLock()
+	val3 := c.healthBitsCache[dev]
+	c.healthBitsCacheMux.RUnlock()
+	assert.Equal(t, 0x10, val3, "cache should be updated when health bits change")
+}
+
+// ─── WearLevelPercent ─────────────────────────────────────────────────────────
+
+// TestWearLevelPercent_NVMe tests that NVMe drives return PercentageUsed directly.
+func TestWearLevelPercent_NVMe(t *testing.T) {
+	info := &SMARTInfo{
+		DiskType:        "NVMe",
+		NvmeSmartHealth: &NvmeSmartHealth{PercentageUsed: 23},
+	}
+	got := info.WearLevelPercent()
+	require.NotNil(t, got)
+	assert.Equal(t, 23, *got)
+}
+
+// TestWearLevelPercent_NVMe_NilHealth returns nil when NvmeSmartHealth is absent.
+func TestWearLevelPercent_NVMe_NilHealth(t *testing.T) {
+	info := &SMARTInfo{DiskType: "NVMe"}
+	assert.Nil(t, info.WearLevelPercent())
+}
+
+// TestWearLevelPercent_SSD_Attr231 tests that attr 231 (SSD Life Left) is the
+// highest-priority source for ATA SSDs (used = 100 − value).
+func TestWearLevelPercent_SSD_Attr231(t *testing.T) {
+	info := &SMARTInfo{
+		DiskType: "SSD",
+		AtaSmartData: &AtaSmartData{
+			Table: []SmartAttribute{
+				{ID: SmartAttrSSDLifeLeft, Value: 75}, // 25 % used
+				{ID: SmartAttrWearLevelingCount, Value: 60},
+			},
+		},
+	}
+	got := info.WearLevelPercent()
+	require.NotNil(t, got)
+	assert.Equal(t, 25, *got, "expected 100-75=25 from attr 231")
+}
+
+// TestWearLevelPercent_SSD_Attr177 tests that attr 177 is used when 231 is absent.
+func TestWearLevelPercent_SSD_Attr177(t *testing.T) {
+	info := &SMARTInfo{
+		DiskType: "SSD",
+		AtaSmartData: &AtaSmartData{
+			Table: []SmartAttribute{
+				{ID: SmartAttrWearLevelingCount, Value: 80}, // 20 % used
+			},
+		},
+	}
+	got := info.WearLevelPercent()
+	require.NotNil(t, got)
+	assert.Equal(t, 20, *got, "expected 100-80=20 from attr 177")
+}
+
+// TestWearLevelPercent_SSD_Attr173 tests that attr 173 is the lowest-priority fallback.
+func TestWearLevelPercent_SSD_Attr173(t *testing.T) {
+	info := &SMARTInfo{
+		DiskType: "SSD",
+		AtaSmartData: &AtaSmartData{
+			Table: []SmartAttribute{
+				{ID: SmartAttrSSDLifeUsed, Raw: Raw{Value: 42}}, // 42 % used
+			},
+		},
+	}
+	got := info.WearLevelPercent()
+	require.NotNil(t, got)
+	assert.Equal(t, 42, *got, "expected raw value 42 from attr 173")
+}
+
+// TestWearLevelPercent_HDD returns nil for spinning hard drives.
+func TestWearLevelPercent_HDD(t *testing.T) {
+	info := &SMARTInfo{DiskType: "HDD"}
+	assert.Nil(t, info.WearLevelPercent())
+}
+
+// TestWearLevelPercent_Unknown returns nil when disk type cannot be determined.
+func TestWearLevelPercent_Unknown(t *testing.T) {
+	info := &SMARTInfo{DiskType: "Unknown"}
+	assert.Nil(t, info.WearLevelPercent())
+}
+
+// TestWearLevelPercent_SSD_NoRelevantAttrs returns nil when no wear attributes exist.
+func TestWearLevelPercent_SSD_NoRelevantAttrs(t *testing.T) {
+	info := &SMARTInfo{
+		DiskType: "SSD",
+		AtaSmartData: &AtaSmartData{
+			Table: []SmartAttribute{
+				{ID: 9, Value: 99},  // Power-on hours — irrelevant
+				{ID: 12, Value: 99}, // Power cycle count — irrelevant
+			},
+		},
+	}
+	assert.Nil(t, info.WearLevelPercent())
+}
+
+// TestWearLevelPercent_Clamping verifies out-of-range values are clamped to [0, 100].
+func TestWearLevelPercent_Clamping(t *testing.T) {
+	tests := []struct {
+		name string
+		info *SMARTInfo
+		want int
+	}{
+		{
+			name: "NVMe percentage_used > 100 clamped to 100",
+			info: &SMARTInfo{
+				DiskType:        "NVMe",
+				NvmeSmartHealth: &NvmeSmartHealth{PercentageUsed: 120},
+			},
+			want: 100,
+		},
+		{
+			name: "SSD attr231 value=0 gives 100 (fully worn)",
+			info: &SMARTInfo{
+				DiskType: "SSD",
+				AtaSmartData: &AtaSmartData{
+					Table: []SmartAttribute{{ID: SmartAttrSSDLifeLeft, Value: 0}},
+				},
+			},
+			want: 100,
+		},
+		{
+			name: "SSD attr231 value=100 gives 0 (brand new)",
+			info: &SMARTInfo{
+				DiskType: "SSD",
+				AtaSmartData: &AtaSmartData{
+					Table: []SmartAttribute{{ID: SmartAttrSSDLifeLeft, Value: 100}},
+				},
+			},
+			want: 0,
+		},
+		{
+			name: "SSD attr173 raw > 100 clamped to 100",
+			info: &SMARTInfo{
+				DiskType: "SSD",
+				AtaSmartData: &AtaSmartData{
+					Table: []SmartAttribute{{ID: SmartAttrSSDLifeUsed, Raw: Raw{Value: 200}}},
+				},
+			},
+			want: 100,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.info.WearLevelPercent()
+			require.NotNil(t, got)
+			assert.Equal(t, tt.want, *got)
+		})
+	}
 }
