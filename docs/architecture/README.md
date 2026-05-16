@@ -34,6 +34,50 @@ The document includes:
 
 **Key Recommendation:** Continue with Option 1 (smartctl wrapper) for current v0.x development, with a roadmap toward Option 4 (hybrid) for future v1.0+ releases.
 
+---
+
+### [ADR-002: Multi-Backend Architecture](./ADR-002-multi-backend-architecture.md)
+
+**Status:** Proposed
+
+**Summary:** Defines the `Backend` interface that abstracts SMART operations away from
+any specific implementation. The existing exec/smartctl approach becomes `ExecBackend`.
+New backends (IoctlBackend, LibBackend, NativeBackend) implement the same interface.
+`Client` becomes a thin orchestrator. Includes a soft migration strategy across releases
+v0.3–v1.0 with full backward compatibility at every step.
+
+---
+
+### [ADR-003: Shadow Mode and Telemetry](./ADR-003-shadow-mode-telemetry.md)
+
+**Status:** Proposed
+
+**Summary:** Introduces `ShadowBackend`, which runs a primary and a secondary backend
+in parallel. The primary result is always returned to the caller; the secondary result
+is compared asynchronously and differences are reported via a pluggable
+`TelemetryReporter` interface. Supports four shadow modes (Disabled, Report, Fallback,
+Validate) and includes bundled reporters for slog/tlog, OpenTelemetry, and HTTP webhooks.
+
+---
+
+### [ADR-004: Automated drivedb.h Tracking](./ADR-004-drivedb-autoupdate.md)
+
+**Status:** Proposed
+
+**Summary:** GitHub Actions workflow that monitors the upstream smartmontools
+`lib/drivedb.h` file daily, detects changes via SHA-256 comparison, and automatically
+opens a pull request. Embeds the upstream commit SHA and date as Go constants
+(`DrivedbUpstreamCommit`, `DrivedbUpstreamDate`) for runtime inspection.
+
+---
+
+### [ROADMAP](./ROADMAP.md)
+
+**Summary:** Phased release plan from the current exec-only v0.2.x to a fully
+self-contained native Go backend at v1.0. Each phase introduces new backends
+(ExecBackend refactor → ShadowBackend → IoctlBackend → LibBackend → NativeBackend)
+while maintaining full backward compatibility throughout.
+
 ## ADR Template
 
 When creating new ADRs, use this template:
