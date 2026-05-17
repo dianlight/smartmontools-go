@@ -265,6 +265,311 @@ Disadvantages:
 | **Performance** | High |
 | **Status** | Preferred over CGO in v0.6 |
 
+#### Library Build Strategies for Creating `libsmartctl.so`
+
+Smartmontools is a C++ CLI application — not a library. `smartctl.cpp` has `main()`,
+global state, and direct stdout/stderr output. To produce a `libsmartctl.so` for
+purego/FFI loading, the C++ source must be compiled into a shared library. The
+following strategies address this with varying tradeoffs in maintainability,
+solidness, and platform reach.
+
+| Strategy | Maintainability | Solidness | Platform | Effort |
+|----------|----------------|-----------|----------|--------|
+| **D1** Patch-and-Build Pipeline | ★★★ High | ★★★ High | Linux + cross | Medium |
+| **D2** Upstream Fork + CI Sync | ★★★ High | ★★★ High | Linux + cross | Medium-High |
+| **D3** CGO Static Wrapper | ★★☆ Medium | ★★★ High | Linux first | Medium |
+| **D4** Upstream Contribution | ★★★★★ (once merged) | ★★★ High | All | Very High |
+
+---
+
+##### D1: Patch-and-Build Pipeline (Recommended)
+
+Maintain a versioned patch set that adds a shared library target to smartmontools's
+autotools build, without maintaining a permanent fork.
+
+**Patch layout:**
+```
+patches/
+├── v7.5/
+│   ├── 0001-add-libsmartctl-h.patch
+│   ├── 0002-add-libsmartctl-cpp.patch
+│   ├── 0003-modify-makefile-am.patch
+│   └── 0004-exclude-main-on-lib-build.patch
+├── v7.6/
+│   └── ...
+├── apply.sh
+└── generate.sh
+```
+
+**C API header** (`libsmartctl.h`):
+```c
+#ifndef LIBSMARTCTL_H
+#define LIBSMARTCTL_H
+
+#define LIBSMARTCTL_VERSION "1.0.0"
+
+typedef struct smartctl_ctx smartctl_ctx;
+
+int smartctl_init(smartctl_ctx** ctx);
+int smartctl_set_option(smartctl_ctx* ctx, const char* key, const char* value);
+int smartctl_scan_devices(smartctl_ctx* ctx, char** out_json);
+int smartctl_get_smart_data(smartctl_ctx* ctx, const char* device, char** out_json);
+int smartctl_check_health(smartctl_ctx* ctx, const char* device);
+void smartctl_free_string(char* s);
+void smartctl_destroy(smartctl_ctx* ctx);
+
+#endif
+```
+
+**Wrapper** (`libsmartctl.cpp`) reuses existing `smartctl.cpp` internals via
+`#include` and guards `main()` with a preprocessor flag:
+```cpp
+#include "libsmartctl.h"
+#include "smartctl.h"
+#include "ataprint.h"
+#include "nvmeprint.h"
+#include "scsiprint.h"
+#include "dev_interface.h"
+```
+
+**Key patch** (`0004-exclude-main-on-lib-build.patch`) — wraps `main()`:
+```diff
+--- a/src/smartctl.cpp
++++ b/src/smartctl.cpp
+@@ -1,3 +1,5 @@
++#ifndef BUILDING_LIBSMARTCTL
++
+ // … existing code unchanged …
+ int main(int argc, char** argv) { … }
++
++#endif /* !BUILDING_LIBSMARTCTL */
+```
+
+**CI workflow** (in `smartmontools-go` repo, runs weekly):
+```yaml
+name: build-libsmartctl
+
+on:
+  schedule:
+    - cron: '0 2 * * 0'   # weekly upstream check
+  workflow_dispatch:
+
+jobs:
+  check-version:
+    outputs:
+      version: ${{ steps.resolve.outputs.version }}
+    runs-on: ubuntu-latest
+    steps:
+      - id: resolve
+        run: |
+          LATEST=$(curl -s https://api.github.com/repos/smartmontools/smartmontools/releases/latest \
+            | jq -r .tag_name)
+          echo "version=$LATEST" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: check-version
+    strategy:
+      matrix:
+        arch: [amd64, arm64]
+    runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          git clone --depth 1 --branch ${{ needs.check-version.outputs.version }} \
+            https://github.com/smartmontools/smartmontools.git src
+          cd src
+          ../patches/apply.sh ${{ needs.check-version.outputs.version }}
+          ./autogen.sh
+          ./configure --enable-shared --disable-static \
+            CFLAGS="-fPIC" CXXFLAGS="-fPIC -DBUILDING_LIBSMARTCTL"
+          make -j$(nproc)
+          mkdir -p ../dist
+          cp src/.libs/libsmartctl.so* ../dist/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: libsmartctl-${{ needs.check-version.outputs.version }}-linux-${{ matrix.arch }}
+          path: dist/
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [check-version, build]
+    uses: softprops/action-gh-release@v2
+    with:
+      files: ./*/libsmartctl-*
+```
+
+**Patch evolution:** When a new tag appears, `apply.sh` tries the existing patches.
+If they fail (upstream changed too much), a maintainer runs `generate.sh` which
+creates fresh patches via `git diff`. CI catches failures automatically and files
+an issue via `actions/github-script`.
+
+| | |
+|---|---|
+| **Maintainability** | High — conflicts detected in CI; regeneration is a single script call |
+| **Solidness** | High — same compiled C++ as smartctl; no source changes besides guarded `main()` |
+| **Platform** | Linux (amd64 + arm64); macOS and FreeBSD via matrix expansion |
+| **Status** | Recommended path for v0.6 |
+
+---
+
+##### D2: Upstream Fork with CI Sync
+
+Maintain a permanent fork at `github.com/smartmontools-go/smartmontools-sdk` that
+includes the C API shim directly in its source tree. A GitHub Action rebases the
+fork onto upstream weekly.
+
+```
+┌──────────────────┐     ┌─────────────────────────┐
+│  smartmontools/   │     │ smartmontools-sdk/       │
+│  smartmontools    │────>│ (fork + C API layer)     │
+└──────────────────┘     └───────────┬───────────────┘
+                                     │ CI build → libsmartctl.so
+```
+
+**Sync workflow** (in the fork repo):
+```yaml
+name: sync-upstream
+on:
+  schedule:
+    - cron: '0 6 * * 0'
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: smartmontools/smartmontools
+          fetch-depth: 0
+          token: ${{ secrets.PAT }}
+      - run: |
+          git remote add sdk https://x-access-token:${{ secrets.PAT }}@github.com/smartmontools-go/smartmontools-sdk.git
+          git fetch sdk main
+          git checkout -b sdk-main sdk/main
+          git rebase origin/main || (echo "Rebase failed" >&2 && exit 1)
+          git push sdk main --force-with-lease
+```
+
+Fork-specific additions:
+```
+├── src/
+│   ├── libsmartctl.h       # C API header (added)
+│   ├── libsmartctl.cpp     # API impl (added)
+│   └── Makefile.am         # +libsmartctl.la target (modified)
+└── .github/workflows/
+    ├── build-libsmartctl.yml
+    └── sync-upstream.yml
+```
+
+| | |
+|---|---|
+| **Maintainability** | High — automated rebase; conflicts are visible in CI |
+| **Solidness** | High — same compiled code as upstream |
+| **Platform** | Linux, cross-compile matrix |
+| **When to choose** | If D1 patch conflicts become frequent (>25% of releases) |
+
+---
+
+##### D3: CGO Static Wrapper
+
+Build smartmontools into a static archive (`.a`) and link via CGO into a Go wrapper
+package. The result is a single self-contained binary with no runtime `.so`.
+
+```
+┌──────────────────┐     ┌───────────────────────────┐
+│  libsmartctl.a    │────>│  go build -tags=cgo        │
+│  (static C++)     │     │  backends/lib/cgo_wrapper  │
+└──────────────────┘     └───────────────┬─────────────┘
+                                         ▼
+                                  self-contained binary
+```
+
+**Go wrapper** (`backends/lib/libsmartctl_cgo.go`):
+```go
+//go:build cgo
+
+package lib
+
+// #cgo LDFLAGS: -L${SRCDIR}/libsmartctl -lsmartctl -lstdc++ -lpthread
+// #cgo CPPFLAGS: -DBUILDING_LIBSMARTCTL
+// #include "libsmartctl.h"
+import "C"
+import "unsafe"
+
+type Context struct{ ptr *C.smartctl_ctx }
+
+func Init() (*Context, error) {
+    var ctx *C.smartctl_ctx
+    if rc := C.smartctl_init(&ctx); rc != 0 {
+        return nil, ErrInit
+    }
+    return &Context{ptr: ctx}, nil
+}
+
+func (c *Context) GetSMARTData(device string) (string, error) {
+    cdev := C.CString(device)
+    defer C.free(unsafe.Pointer(cdev))
+    var out *C.char
+    if rc := C.smartctl_get_smart_data(c.ptr, cdev, &out); rc != 0 {
+        return "", ErrDevice
+    }
+    defer C.smartctl_free_string(out)
+    return C.GoString(out), nil
+}
+```
+
+**CI** cross-compiles the static library per target:
+```yaml
+- name: Build libsmartctl.a for ${{ matrix.target }}
+  run: |
+    git clone --depth 1 --branch ${{ env.SMART_VERSION }} \
+      https://github.com/smartmontools/smartmontools.git
+    cd smartmontools
+    ./autogen.sh && ./configure --host=${{ matrix.toolchain }} \
+      --enable-static --disable-shared CXXFLAGS="-fPIC -DBUILDING_LIBSMARTCTL"
+    make -j$(nproc)
+    cp src/.libs/libsmartctl.a ../dist/
+```
+
+| | |
+|---|---|
+| **Maintainability** | Medium — same patch approach as D1, but CGO disables pure-Go cross-compile paths |
+| **Solidness** | High — fully statically linked; no runtime `.so` |
+| **Platform** | Linux (good cross-compile); macOS/Windows feasible via toolchain matrix |
+| **Performance** | Highest — direct CGO call, no FFI marshalling |
+| **Tradeoff** | CGO required; Go's `-race`, tinygo, wasm targets are unavailable |
+| **Status** | Good option when `.so` distribution is undesirable |
+
+---
+
+##### D4: Upstream-First Contribution (Long-Term Goal)
+
+Add `--enable-libsmartctl` directly to the upstream smartmontools project.
+Once merged, all downstream patch maintenance is eliminated.
+
+Required changes to upstream:
+1. **`configure.ac`** — add `AC_ARG_ENABLE([libsmartctl], ...)`
+2. **`src/Makefile.am`** — conditional `libsmartctl_la_LDFLAGS = -module -shared`
+3. **`src/libsmartctl.h`** — public C API header
+4. **`src/libsmartctl.cpp`** — API implementation (guarded against `main()`)
+5. **`smartctl.cpp`** — guard `main()` as in D1
+
+| | |
+|---|---|
+| **Maintainability** | ★★★★★ — zero downstream maintenance once merged |
+| **Solidness** | Highest — maintained by smartmontools project |
+| **Platform** | All upstream-supported platforms |
+| **Status** | Begin discussion after D1/D2 validation; target v1.0+ |
+
+---
+
+**Recommendation:** Start with **D1 (Patch-and-Build Pipeline)** for v0.6. It
+offers the best balance of low maintenance overhead, CI-driven conflict detection,
+and production solidness. If patch conflicts become frequent, graduate to **D2
+(Upstream Fork)**. Pursue **D4 (Upstream Contribution)** independently as a
+long-term goal.
+
 ### Option E — Native Go Port (v1.0+)
 
 Full reimplementation of smartmontools SMART protocol layer in Go:
