@@ -4,12 +4,12 @@ go 1.26
 
 require (
 	github.com/dianlight/tlog v0.2.2
+	github.com/ebitengine/purego v0.10.0
 	github.com/stretchr/testify v1.11.1
 )
 
 require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
-	github.com/ebitengine/purego v0.10.0 // indirect
 	github.com/fatih/color v1.18.0 // indirect
 	github.com/k0kubun/pp/v3 v3.5.0 // indirect
 	github.com/lmittmann/tint v1.1.2 // indirect
