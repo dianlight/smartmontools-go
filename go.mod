@@ -9,6 +9,7 @@ require (
 
 require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
+	github.com/ebitengine/purego v0.10.0 // indirect
 	github.com/fatih/color v1.18.0 // indirect
 	github.com/k0kubun/pp/v3 v3.5.0 // indirect
 	github.com/lmittmann/tint v1.1.2 // indirect

@@ -1,0 +1,58 @@
+From 0000000000000000000000000000000000000003 Mon Sep 17 00:00:00 2001
+From: smartmontools-go maintainers <maintainers@dianlight.github.io>
+Date: Mon, 17 May 2026 00:00:00 +0000
+Subject: [PATCH 3/4] Add libsmartctl shared library target to Makefile.am
+
+Adds a conditional Automake target for libsmartctl.  The target is only
+built when --enable-libsmartctl is passed to configure (set by
+CXXFLAGS="-DBUILDING_LIBSMARTCTL" from the CI pipeline).
+
+---
+ src/Makefile.am | 28 ++++++++++++++++++++++++++++
+ 1 file changed, 28 insertions(+)
+
+diff --git a/src/Makefile.am b/src/Makefile.am
+index 0000001..0000003 100644
+--- a/src/Makefile.am
++++ b/src/Makefile.am
+@@ -1,5 +1,7 @@
+ ## Process this file with automake to produce Makefile.in
+
++# smartmontools shared library (libsmartctl) — optional, built when
++# CXXFLAGS includes -DBUILDING_LIBSMARTCTL.
++
+ bin_PROGRAMS = smartctl smartd
+
+ # Common sources shared between smartctl and smartd
+@@ -80,3 +82,29 @@ CLEANFILES = \
+   drivedb.h \
+   smartd_update_smart_drivedb
+
++
++# ----------------------------------------------------------------
++# libsmartctl shared library target
++# ----------------------------------------------------------------
++if BUILDING_LIBSMARTCTL
++
++lib_LTLIBRARIES = libsmartctl.la
++
++libsmartctl_la_SOURCES = \
++  libsmartctl.cpp \
++  ataprint.cpp \
++  nvmeprint.cpp \
++  scsiprint.cpp \
++  atacmds.cpp \
++  nvmecmds.cpp \
++  scsicmds.cpp \
++  dev_interface.cpp \
++  dev_legacy.cpp \
++  json.cpp \
++  utility.cpp \
++  $(DRIVEDB_SOURCES)
++
++libsmartctl_la_CXXFLAGS = $(AM_CXXFLAGS) -DBUILDING_LIBSMARTCTL -fPIC
++libsmartctl_la_LDFLAGS  = -shared -avoid-version \
++                           -export-symbols-regex '^smartctl_' \
++                           $(LDFLAGS)
++
++endif  # BUILDING_LIBSMARTCTL
