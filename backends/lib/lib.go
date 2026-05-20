@@ -5,6 +5,11 @@
 //
 //	scripts/setup-lib-backend.sh
 //
+// The script downloads the pre-built libsmartmon.a static library from
+// https://github.com/dianlight/smartmontools-sdk releases and compiles the
+// thin C++ wrapper (backends/lib/csrc/smartmon_c_api.cpp) into
+// backends/lib/sdk/libsmartmon_go.{so,dylib}.
+//
 // Then point the backend at it via SMARTMON_LIB_PATH or WithLibraryPath.
 //
 //go:generate ../../scripts/setup-lib-backend.sh
@@ -67,6 +72,10 @@ type Option func(*LibBackend)
 // purego at runtime. No CGO is required. Build the wrapper once with:
 //
 //	scripts/setup-lib-backend.sh
+//
+// The script downloads libsmartmon.a from github.com/dianlight/smartmontools-sdk
+// releases and compiles the thin C++ wrapper into
+// backends/lib/sdk/libsmartmon_go.{so,dylib}.
 type LibBackend struct {
 	libHandle  uintptr
 	libPath    string
@@ -400,9 +409,11 @@ func resolveLibPath() (string, error) {
 		}
 	}
 	return "", errors.New(
-		"smartmon wrapper library not found.\n" +
+		"smartmon wrapper library (libsmartmon_go.{so,dylib}) not found.\n" +
 			"Build it with:  scripts/setup-lib-backend.sh\n" +
-			"Then set SMARTMON_LIB_PATH or copy to a standard library directory.",
+			"The script downloads libsmartmon.a from github.com/dianlight/smartmontools-sdk\n" +
+			"and compiles the wrapper. Then set SMARTMON_LIB_PATH or copy to a standard\n" +
+			"library directory.",
 	)
 }
 

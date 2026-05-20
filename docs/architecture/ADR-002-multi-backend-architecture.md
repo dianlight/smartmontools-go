@@ -417,7 +417,7 @@ an issue via `actions/github-script`.
 
 ##### D2: Upstream Fork with CI Sync
 
-Maintain a permanent fork at `github.com/smartmontools-go/smartmontools-sdk` that
+Maintain a permanent fork at `github.com/dianlight/smartmontools-sdk` that
 includes the C API shim directly in its source tree. A GitHub Action rebases the
 fork onto upstream weekly.
 
@@ -426,7 +426,7 @@ fork onto upstream weekly.
 │  smartmontools/   │     │ smartmontools-sdk/       │
 │  smartmontools    │────>│ (fork + C API layer)     │
 └──────────────────┘     └───────────┬───────────────┘
-                                     │ CI build → libsmartctl.so
+                                     │ CI build → libsmartmon.a
 ```
 
 **Sync workflow** (in the fork repo):
@@ -447,7 +447,7 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.PAT }}
       - run: |
-          git remote add sdk https://x-access-token:${{ secrets.PAT }}@github.com/smartmontools-go/smartmontools-sdk.git
+          git remote add sdk https://x-access-token:${{ secrets.PAT }}@github.com/dianlight/smartmontools-sdk.git
           git fetch sdk main
           git checkout -b sdk-main sdk/main
           git rebase origin/main || (echo "Rebase failed" >&2 && exit 1)
