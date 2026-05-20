@@ -1,27 +1,20 @@
-//go:build linux || darwin || freebsd
+//go:build linux || darwin
 
-// Package main demonstrates using the LibBackend (D1) that loads libsmartctl
-// at runtime via purego instead of shelling out to the smartctl binary.
+// Package main demonstrates using the LibBackend (SDK) that loads the smartmon
+// wrapper library at runtime via purego — no CGO required.
 //
-// Build and install libsmartctl first:
+// Build the wrapper library first:
 //
-//	git clone --depth 1 --branch v7.5 \
-//	  https://github.com/smartmontools/smartmontools.git src
-//	./patches/apply.sh v7.5 src
-//	cd src && ./autogen.sh
-//	./configure --enable-shared --disable-static \
-//	  CFLAGS="-fPIC" CXXFLAGS="-fPIC -DBUILDING_LIBSMARTCTL"
-//	make -j$(nproc)
-//	sudo cp src/.libs/libsmartctl.so* /usr/local/lib/
-//	sudo ldconfig
+//	scripts/setup-lib-backend.sh
 //
 // Run the example:
 //
-//	go run .
+//	SMARTMON_LIB_PATH=backends/lib/sdk/libsmartmon_go.dylib go run .  # macOS
+//	SMARTMON_LIB_PATH=backends/lib/sdk/libsmartmon_go.so    go run .  # Linux
 //
-// Or point it at a custom library path:
+// Or pass the path explicitly:
 //
-//	LIBSMARTCTL_PATH=/path/to/libsmartctl.so go run .
+//	go run . -lib /path/to/libsmartmon_go.so
 package main
 
 import (
@@ -42,32 +35,32 @@ func main() {
 	red := color.New(color.FgRed).SprintFunc()
 	yellow := color.New(color.FgYellow).SprintFunc()
 
-	fmt.Println(blue("Smartmontools LibBackend (D1) Example"))
-	fmt.Println(blue("======================================="))
+	fmt.Println(blue("Smartmontools LibBackend (SDK) Example"))
+	fmt.Println(blue("======================================"))
 	fmt.Println()
 
-	// Build the lib backend options. An explicit library path can be
-	// provided via the LIBSMARTCTL_PATH environment variable; otherwise
-	// the backend searches well-known locations automatically.
+	// Build options. An explicit library path can be provided via
+	// SMARTMON_LIB_PATH; otherwise the backend searches well-known locations.
 	libOpts := []libbackend.Option{
 		libbackend.WithTLogHandler(tlog.NewLoggerWithLevel(tlog.LevelInfo)),
 	}
-	if path, ok := os.LookupEnv("LIBSMARTCTL_PATH"); ok {
+	if path, ok := os.LookupEnv("SMARTMON_LIB_PATH"); ok {
 		libOpts = append(libOpts, libbackend.WithLibraryPath(path))
 		fmt.Printf("Using library: %s\n\n", blue(path))
 	} else {
-		fmt.Println(yellow("LIBSMARTCTL_PATH not set – searching default locations"))
+		fmt.Println(yellow("SMARTMON_LIB_PATH not set – searching default locations"))
 		fmt.Println()
 	}
 
-	// Create the LibBackend. This dlopen()s the shared library and verifies
-	// the C ABI version; it does not spawn any child process.
+	// Create the LibBackend. This dlopen()s the shared library and initialises
+	// the smartmontools singleton; no child process is spawned.
 	lib, err := libbackend.New(libOpts...)
 	if err != nil {
-		fmt.Println(red(fmt.Sprintf("✗ Failed to load libsmartctl: %v", err)))
+		fmt.Println(red(fmt.Sprintf("✗ Failed to load smartmon wrapper: %v", err)))
 		fmt.Println()
-		fmt.Println("Make sure libsmartctl is built and installed:")
-		fmt.Println("  https://github.com/dianlight/smartmontools-go/tree/main/patches")
+		fmt.Println("Build the wrapper library with:")
+		fmt.Println("  scripts/setup-lib-backend.sh")
+		fmt.Println("Then set SMARTMON_LIB_PATH to the resulting .so/.dylib path.")
 		os.Exit(1)
 	}
 	defer func() {
@@ -76,7 +69,7 @@ func main() {
 		}
 	}()
 
-	fmt.Println(green("✓ libsmartctl loaded successfully"))
+	fmt.Println(green("✓ Wrapper library loaded successfully"))
 	fmt.Println()
 
 	// Wire the LibBackend into the high-level smartmontools client.

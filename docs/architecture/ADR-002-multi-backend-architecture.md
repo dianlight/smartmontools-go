@@ -282,10 +282,13 @@ solidness, and platform reach.
 
 ---
 
-##### D1: Patch-and-Build Pipeline (Recommended)
+##### D1: Patch-and-Build Pipeline (Superseded by D2)
 
 Maintain a versioned patch set that adds a shared library target to smartmontools's
 autotools build, without maintaining a permanent fork.
+
+> **Note:** D1 has been superseded by D2 (Upstream Fork with CI Sync). The patch
+> infrastructure remains in `patches/` for reference but is no longer used by CI.
 
 **Patch layout:**
 ```
@@ -408,7 +411,7 @@ an issue via `actions/github-script`.
 | **Maintainability** | High — conflicts detected in CI; regeneration is a single script call |
 | **Solidness** | High — same compiled C++ as smartctl; no source changes besides guarded `main()` |
 | **Platform** | Linux (amd64 + arm64); macOS and FreeBSD via matrix expansion |
-| **Status** | Recommended path for v0.6 |
+| **Status** | Superseded by D2 — patches retained in `patches/` for reference |
 
 ---
 
@@ -467,7 +470,12 @@ Fork-specific additions:
 | **Maintainability** | High — automated rebase; conflicts are visible in CI |
 | **Solidness** | High — same compiled code as upstream |
 | **Platform** | Linux, cross-compile matrix |
-| **When to choose** | If D1 patch conflicts become frequent (>25% of releases) |
+| **Status** | Active — D2 is the sole build strategy |
+
+**Implementation:** The fork lives at `github.com/dianlight/smartmontools-sdk`.
+The `build-libsmartctl.yml` workflow builds from the fork weekly (Sunday 02:00 UTC).
+The `sync-upstream.yml` workflow (in the fork) rebases onto upstream weekly (Sunday 06:00 UTC).
+See `docs/fork/D2-UPSTREAM-FORK.md` for fork setup instructions.
 
 ---
 
@@ -564,10 +572,10 @@ Required changes to upstream:
 
 ---
 
-**Recommendation:** Start with **D1 (Patch-and-Build Pipeline)** for v0.6. It
-offers the best balance of low maintenance overhead, CI-driven conflict detection,
-and production solidness. If patch conflicts become frequent, graduate to **D2
-(Upstream Fork)**. Pursue **D4 (Upstream Contribution)** independently as a
+**Recommendation:** **D2 (Upstream Fork with CI Sync)** is the active strategy.
+The fork at `github.com/dianlight/smartmontools-sdk` includes the C API shim
+directly in its source tree and is rebased onto upstream weekly via
+`sync-upstream.yml`. Pursue **D4 (Upstream Contribution)** independently as a
 long-term goal.
 
 ### Option E — Native Go Port (v1.0+)
@@ -674,3 +682,4 @@ smartmontools-go/
 - [ADR-001: SMART Data Access Approaches](./ADR-001-smart-access-approaches.md)
 - [ADR-003: Shadow Mode and Telemetry](./ADR-003-shadow-mode-telemetry.md)
 - [ROADMAP](./ROADMAP.md)
+- [D2: Upstream Fork Setup Guide](../fork/D2-UPSTREAM-FORK.md)

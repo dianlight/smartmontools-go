@@ -33,3 +33,6 @@ go.work.sum
 # Editor/IDE
 # .idea/
 # .vscode/
+
+# smartmontools-sdk artifacts (populated by scripts/setup-lib-backend.sh)
+backends/lib/sdk/

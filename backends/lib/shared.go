@@ -1,7 +1,8 @@
-// Package lib provides a Backend implementation that loads libsmartctl via
-// purego (no CGO required). It is available on Linux, macOS, and FreeBSD.
-// Use New to create a LibBackend that dlopen's a pre-built libsmartctl shared
-// library and delegates all SMART operations through its C API.
+// Package lib provides a Backend implementation that loads the smartmon wrapper
+// library via purego (no CGO required). It is available on Linux and macOS.
+//
+// Build the wrapper library once with scripts/setup-lib-backend.sh, then use
+// WithLibraryPath or SMARTMON_LIB_PATH to point the backend at it.
 package lib
 
 import smtypes "github.com/dianlight/smartmontools-go/internal/types"

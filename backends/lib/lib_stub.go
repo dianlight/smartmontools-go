@@ -1,4 +1,4 @@
-//go:build !linux && !darwin && !freebsd
+//go:build !linux && !darwin
 
 package lib
 
@@ -7,7 +7,7 @@ import (
 	"errors"
 )
 
-// ErrNotSupported is returned by New on platforms where dlopen is unavailable.
+// ErrNotSupported is returned by New on platforms where the wrapper library is unavailable.
 var ErrNotSupported = errors.New("lib backend is not supported on this platform")
 
 // Option configures a LibBackend.
@@ -36,14 +36,14 @@ func New(_ ...Option) (*LibBackend, error) {
 	return nil, ErrNotSupported
 }
 
-func (u *unsupportedBackend) Name() string                                                        { return "lib" }
-func (u *unsupportedBackend) ScanDevices(_ context.Context) ([]Device, error)                    { return nil, ErrNotSupported }
-func (u *unsupportedBackend) GetSMARTInfo(_ context.Context, _ string) (*SMARTInfo, error)       { return nil, ErrNotSupported }
-func (u *unsupportedBackend) CheckHealth(_ context.Context, _ string) (bool, error)              { return false, ErrNotSupported }
-func (u *unsupportedBackend) GetDeviceInfo(_ context.Context, _ string) (map[string]any, error)  { return nil, ErrNotSupported }
-func (u *unsupportedBackend) RunSelfTest(_ context.Context, _ string, _ string) error            { return ErrNotSupported }
+func (u *unsupportedBackend) Name() string                                                              { return "lib" }
+func (u *unsupportedBackend) ScanDevices(_ context.Context) ([]Device, error)                          { return nil, ErrNotSupported }
+func (u *unsupportedBackend) GetSMARTInfo(_ context.Context, _ string) (*SMARTInfo, error)             { return nil, ErrNotSupported }
+func (u *unsupportedBackend) CheckHealth(_ context.Context, _ string) (bool, error)                    { return false, ErrNotSupported }
+func (u *unsupportedBackend) GetDeviceInfo(_ context.Context, _ string) (map[string]any, error)        { return nil, ErrNotSupported }
+func (u *unsupportedBackend) RunSelfTest(_ context.Context, _ string, _ string) error                  { return ErrNotSupported }
 func (u *unsupportedBackend) GetAvailableSelfTests(_ context.Context, _ string) (*SelfTestInfo, error) { return nil, ErrNotSupported }
-func (u *unsupportedBackend) EnableSMART(_ context.Context, _ string) error                      { return ErrNotSupported }
-func (u *unsupportedBackend) DisableSMART(_ context.Context, _ string) error                     { return ErrNotSupported }
-func (u *unsupportedBackend) AbortSelfTest(_ context.Context, _ string) error                    { return ErrNotSupported }
-func (u *unsupportedBackend) Close() error                                                        { return nil }
+func (u *unsupportedBackend) EnableSMART(_ context.Context, _ string) error                            { return ErrNotSupported }
+func (u *unsupportedBackend) DisableSMART(_ context.Context, _ string) error                           { return ErrNotSupported }
+func (u *unsupportedBackend) AbortSelfTest(_ context.Context, _ string) error                          { return ErrNotSupported }
+func (u *unsupportedBackend) Close() error                                                              { return nil }

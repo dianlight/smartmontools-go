@@ -1,4 +1,4 @@
-//go:build linux || darwin || freebsd
+//go:build linux || darwin
 
 package lib
 
@@ -11,6 +11,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	smtypes "github.com/dianlight/smartmontools-go/internal/types"
 )
 
 var _ Backend = (*LibBackend)(nil)
@@ -30,75 +32,63 @@ func TestLibBackend_Close_Idempotent(t *testing.T) {
 
 // TestNew_InvalidPath verifies that New returns an error for a non-existent library path.
 func TestNew_InvalidPath(t *testing.T) {
-	_, err := New(WithLibraryPath("/nonexistent/libsmartctl.so"))
+	_, err := New(WithLibraryPath("/nonexistent/libsmartmon_go.so"))
 	require.Error(t, err)
 }
 
 // TestNew_MissingLibrary verifies that New returns an error when no library is found.
 func TestNew_MissingLibrary(t *testing.T) {
-	// Skip if libsmartctl happens to be installed (integration environment).
 	if _, err := New(); err == nil {
-		t.Skip("libsmartctl is installed; skipping missing-library test")
+		t.Skip("smartmon wrapper library is installed; skipping missing-library test")
 	}
 	_, err := New()
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "libsmartctl not found")
+	assert.Contains(t, err.Error(), "not found")
 }
 
-// TestWithLibraryPath verifies that the option sets the library path field.
-func TestWithLibraryPath(t *testing.T) {
-	b := &LibBackend{}
-	WithLibraryPath("/custom/libsmartctl.so")(b)
-	assert.Equal(t, "/custom/libsmartctl.so", b.libPath)
-}
-
-// TestWithLogHandler verifies that the log handler option is applied.
+// TestWithLogHandler verifies that the log handler option is applied without panic.
 func TestWithLogHandler(t *testing.T) {
-	// A nil LogAdapter should not panic during option application.
 	b := &LibBackend{}
 	WithLogHandler(nil)(b)
 	assert.Nil(t, b.logHandler)
 }
 
-// newTestBackend returns a LibBackend wired with controllable fake C functions,
-// enabling unit testing of the Go wrapper logic without a real shared library.
+// newTestBackend constructs a LibBackend with injectable fake C functions, enabling
+// unit testing of the Go wrapper logic without a real shared library.
 func newTestBackend(t *testing.T, fns *libFuncs) *LibBackend {
 	t.Helper()
-	b := &LibBackend{
-		ctx:   1, // non-zero sentinel; never dereferenced by fake funcs
-		funcs: fns,
-	}
-	t.Cleanup(func() { b.ctx = 0 }) // prevent destroy call on zero funcs
-	return b
+	return &LibBackend{funcs: fns}
 }
 
-// makeCStr allocates a null-terminated C-style string in Go heap memory and
-// returns its address as unsafe.Pointer for use in fake C function implementations.
-// The backing slice is kept alive for the duration of the test.
+// makeCStr allocates a null-terminated byte slice in Go heap memory and returns
+// its address as unsafe.Pointer, simulating a C string for fake C functions.
 func makeCStr(t *testing.T, s string) unsafe.Pointer {
 	t.Helper()
 	b := make([]byte, len(s)+1)
 	copy(b, s)
-	t.Cleanup(func() { _ = b }) // keep slice alive until test ends
+	t.Cleanup(func() { _ = b })
+	if len(b) == 0 {
+		return nil
+	}
 	return unsafe.Pointer(&b[0])
 }
 
-// makeFakeLastError returns a lastError function that always returns an error message.
-func makeFakeLastError(t *testing.T, msg string) func(uintptr) unsafe.Pointer {
+// fakeLastError returns a lastError function that always returns the given message.
+func fakeLastError(t *testing.T, msg string) func() unsafe.Pointer {
 	ptr := makeCStr(t, msg)
-	return func(_ uintptr) unsafe.Pointer { return ptr }
+	return func() unsafe.Pointer { return ptr }
 }
 
-// TestScanDevices_Success verifies that ScanDevices parses JSON from the C API.
+// TestScanDevices_Success verifies that ScanDevices parses a JSON device list.
 func TestScanDevices_Success(t *testing.T) {
 	scanJSON := `{"devices":[{"name":"/dev/sda","type":"ata"},{"name":"/dev/sdb","type":"nvme"}]}`
 	b := newTestBackend(t, &libFuncs{
-		scanDevices: func(ctx uintptr, out *unsafe.Pointer) int32 {
+		scanDevices: func(out *unsafe.Pointer) int32 {
 			*out = makeCStr(t, scanJSON)
 			return 0
 		},
-		freeString:  func(unsafe.Pointer) {},
-		lastError:   makeFakeLastError(t, ""),
+		freeString: func(unsafe.Pointer) {},
+		lastError:  fakeLastError(t, ""),
 	})
 
 	devices, err := b.ScanDevices(context.Background())
@@ -111,8 +101,8 @@ func TestScanDevices_Success(t *testing.T) {
 // TestScanDevices_Error verifies that a non-zero return code yields an error.
 func TestScanDevices_Error(t *testing.T) {
 	b := newTestBackend(t, &libFuncs{
-		scanDevices: func(_ uintptr, _ *unsafe.Pointer) int32 { return 1 },
-		lastError:   makeFakeLastError(t, "scan failed"),
+		scanDevices: func(_ *unsafe.Pointer) int32 { return 1 },
+		lastError:   fakeLastError(t, "scan failed"),
 	})
 
 	_, err := b.ScanDevices(context.Background())
@@ -126,27 +116,26 @@ func TestScanDevices_ContextCancelled(t *testing.T) {
 	cancel()
 	b := newTestBackend(t, &libFuncs{})
 	_, err := b.ScanDevices(ctx)
-	require.Error(t, err)
-	assert.ErrorIs(t, err, context.Canceled)
+	require.ErrorIs(t, err, context.Canceled)
 }
 
 // TestGetSMARTInfo_Success verifies JSON parsing of full SMART data.
 func TestGetSMARTInfo_Success(t *testing.T) {
 	info := map[string]any{
-		"device":       map[string]any{"name": "/dev/sda", "type": "ata"},
-		"model_name":   "Test Drive",
+		"device":        map[string]any{"name": "/dev/sda", "type": "ata"},
+		"model_name":    "Test Drive",
 		"serial_number": "SN123456",
 	}
 	raw, err := json.Marshal(info)
 	require.NoError(t, err)
 
 	b := newTestBackend(t, &libFuncs{
-		getSmartData: func(_ uintptr, _ string, out *unsafe.Pointer) int32 {
+		getSmartData: func(_, _ string, out *unsafe.Pointer) int32 {
 			*out = makeCStr(t, string(raw))
 			return 0
 		},
 		freeString: func(unsafe.Pointer) {},
-		lastError:  makeFakeLastError(t, ""),
+		lastError:  fakeLastError(t, ""),
 	})
 
 	got, err := b.GetSMARTInfo(context.Background(), "/dev/sda")
@@ -155,11 +144,20 @@ func TestGetSMARTInfo_Success(t *testing.T) {
 	assert.Equal(t, "SN123456", got.SerialNumber)
 }
 
+// TestGetSMARTInfo_ContextCancelled verifies early return when context is done.
+func TestGetSMARTInfo_ContextCancelled(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	b := newTestBackend(t, &libFuncs{})
+	_, err := b.GetSMARTInfo(ctx, "/dev/sda")
+	require.ErrorIs(t, err, context.Canceled)
+}
+
 // TestGetSMARTInfo_Error verifies error propagation from C API.
 func TestGetSMARTInfo_Error(t *testing.T) {
 	b := newTestBackend(t, &libFuncs{
-		getSmartData: func(_ uintptr, _ string, _ *unsafe.Pointer) int32 { return 2 },
-		lastError:    makeFakeLastError(t, "device not found"),
+		getSmartData: func(_, _ string, _ *unsafe.Pointer) int32 { return 2 },
+		lastError:    fakeLastError(t, "device not found"),
 	})
 
 	_, err := b.GetSMARTInfo(context.Background(), "/dev/sda")
@@ -170,11 +168,11 @@ func TestGetSMARTInfo_Error(t *testing.T) {
 // TestCheckHealth_Healthy verifies that healthy=1 maps to true.
 func TestCheckHealth_Healthy(t *testing.T) {
 	b := newTestBackend(t, &libFuncs{
-		checkHealth: func(_ uintptr, _ string, out *int32) int32 {
+		checkHealth: func(_, _ string, out *int32) int32 {
 			*out = 1
 			return 0
 		},
-		lastError: makeFakeLastError(t, ""),
+		lastError: fakeLastError(t, ""),
 	})
 
 	ok, err := b.CheckHealth(context.Background(), "/dev/sda")
@@ -185,11 +183,11 @@ func TestCheckHealth_Healthy(t *testing.T) {
 // TestCheckHealth_Unhealthy verifies that healthy=0 maps to false.
 func TestCheckHealth_Unhealthy(t *testing.T) {
 	b := newTestBackend(t, &libFuncs{
-		checkHealth: func(_ uintptr, _ string, out *int32) int32 {
+		checkHealth: func(_, _ string, out *int32) int32 {
 			*out = 0
 			return 0
 		},
-		lastError: makeFakeLastError(t, ""),
+		lastError: fakeLastError(t, ""),
 	})
 
 	ok, err := b.CheckHealth(context.Background(), "/dev/sda")
@@ -200,8 +198,8 @@ func TestCheckHealth_Unhealthy(t *testing.T) {
 // TestCheckHealth_Error verifies error propagation.
 func TestCheckHealth_Error(t *testing.T) {
 	b := newTestBackend(t, &libFuncs{
-		checkHealth: func(_ uintptr, _ string, _ *int32) int32 { return 1 },
-		lastError:   makeFakeLastError(t, "ioctl error"),
+		checkHealth: func(_, _ string, _ *int32) int32 { return 1 },
+		lastError:   fakeLastError(t, "ioctl error"),
 	})
 
 	_, err := b.CheckHealth(context.Background(), "/dev/sda")
@@ -213,12 +211,12 @@ func TestCheckHealth_Error(t *testing.T) {
 func TestGetDeviceInfo_Success(t *testing.T) {
 	payload := `{"model_name":"Test","firmware_version":"1.0"}`
 	b := newTestBackend(t, &libFuncs{
-		getSmartData: func(_ uintptr, _ string, out *unsafe.Pointer) int32 {
+		getSmartData: func(_, _ string, out *unsafe.Pointer) int32 {
 			*out = makeCStr(t, payload)
 			return 0
 		},
 		freeString: func(unsafe.Pointer) {},
-		lastError:  makeFakeLastError(t, ""),
+		lastError:  fakeLastError(t, ""),
 	})
 
 	result, err := b.GetDeviceInfo(context.Background(), "/dev/sda")
@@ -227,16 +225,16 @@ func TestGetDeviceInfo_Success(t *testing.T) {
 	assert.Equal(t, "1.0", result["firmware_version"])
 }
 
-// TestRunSelfTest_Success verifies success path.
+// TestRunSelfTest_Success verifies success path and argument forwarding.
 func TestRunSelfTest_Success(t *testing.T) {
 	var gotDevice, gotType string
 	b := newTestBackend(t, &libFuncs{
-		runSelfTest: func(_ uintptr, device string, testType string) int32 {
+		runSelftest: func(device, _, testType string) int32 {
 			gotDevice = device
 			gotType = testType
 			return 0
 		},
-		lastError: makeFakeLastError(t, ""),
+		lastError: fakeLastError(t, ""),
 	})
 
 	err := b.RunSelfTest(context.Background(), "/dev/sda", "short")
@@ -248,8 +246,8 @@ func TestRunSelfTest_Success(t *testing.T) {
 // TestRunSelfTest_Error verifies error propagation.
 func TestRunSelfTest_Error(t *testing.T) {
 	b := newTestBackend(t, &libFuncs{
-		runSelfTest: func(_ uintptr, _ string, _ string) int32 { return 1 },
-		lastError:   makeFakeLastError(t, "self-test not supported"),
+		runSelftest: func(_, _, _ string) int32 { return 1 },
+		lastError:   fakeLastError(t, "self-test not supported"),
 	})
 
 	err := b.RunSelfTest(context.Background(), "/dev/sda", "short")
@@ -260,8 +258,8 @@ func TestRunSelfTest_Error(t *testing.T) {
 // TestEnableSMART_Success verifies success path.
 func TestEnableSMART_Success(t *testing.T) {
 	b := newTestBackend(t, &libFuncs{
-		enableSMART: func(_ uintptr, _ string) int32 { return 0 },
-		lastError:   makeFakeLastError(t, ""),
+		enableSmart: func(_, _ string) int32 { return 0 },
+		lastError:   fakeLastError(t, ""),
 	})
 	assert.NoError(t, b.EnableSMART(context.Background(), "/dev/sda"))
 }
@@ -269,8 +267,8 @@ func TestEnableSMART_Success(t *testing.T) {
 // TestDisableSMART_Error verifies error propagation.
 func TestDisableSMART_Error(t *testing.T) {
 	b := newTestBackend(t, &libFuncs{
-		disableSMART: func(_ uintptr, _ string) int32 { return 1 },
-		lastError:    makeFakeLastError(t, "NVMe does not support disable"),
+		disableSmart: func(_, _ string) int32 { return 1 },
+		lastError:    fakeLastError(t, "NVMe does not support disable"),
 	})
 	err := b.DisableSMART(context.Background(), "/dev/nvme0")
 	require.Error(t, err)
@@ -280,13 +278,14 @@ func TestDisableSMART_Error(t *testing.T) {
 // TestAbortSelfTest_Success verifies success path.
 func TestAbortSelfTest_Success(t *testing.T) {
 	b := newTestBackend(t, &libFuncs{
-		abortSelfTest: func(_ uintptr, _ string) int32 { return 0 },
-		lastError:     makeFakeLastError(t, ""),
+		abortSelftest: func(_, _ string) int32 { return 0 },
+		lastError:     fakeLastError(t, ""),
 	})
 	assert.NoError(t, b.AbortSelfTest(context.Background(), "/dev/sda"))
 }
 
-// TestGetAvailableSelfTests_ATA verifies ATA self-test capability parsing.
+// TestGetAvailableSelfTests_ATA verifies ATA self-test capability parsing via
+// PopulateSelfTestInfo (pure Go logic, no library call required for this layer).
 func TestGetAvailableSelfTests_ATA(t *testing.T) {
 	payload := `{
 		"ata_smart_data": {
@@ -297,12 +296,12 @@ func TestGetAvailableSelfTests_ATA(t *testing.T) {
 		}
 	}`
 	b := newTestBackend(t, &libFuncs{
-		getSmartData: func(_ uintptr, _ string, out *unsafe.Pointer) int32 {
+		getSmartData: func(_, _ string, out *unsafe.Pointer) int32 {
 			*out = makeCStr(t, payload)
 			return 0
 		},
 		freeString: func(unsafe.Pointer) {},
-		lastError:  makeFakeLastError(t, ""),
+		lastError:  fakeLastError(t, ""),
 	})
 
 	info, err := b.GetAvailableSelfTests(context.Background(), "/dev/sda")
@@ -313,15 +312,38 @@ func TestGetAvailableSelfTests_ATA(t *testing.T) {
 	assert.Equal(t, 120, info.Durations["long"])
 }
 
-// TestCGoString verifies the null-terminated C string decoder.
-func TestCGoString(t *testing.T) {
+// TestPopulateSelfTestInfo_ATA tests the pure Go self-test info parsing directly.
+func TestPopulateSelfTestInfo_ATA(t *testing.T) {
+	pm := smtypes.PollingMinutes{Short: 1, Extended: 60, Conveyance: 3}
+	st := smtypes.SelfTest{PollingMinutes: &pm}
+	caps := smtypes.Capabilities{SelfTestsSupported: true, ConveyanceSelfTestSupported: true}
+	ata := &smtypes.AtaSmartData{
+		Capabilities: &caps,
+		SelfTest:     &st,
+	}
+	info := &smtypes.SelfTestInfo{
+		Available: []string{},
+		Durations: make(map[string]int),
+	}
+	smtypes.PopulateSelfTestInfo(info, ata, nil, nil)
+
+	assert.Contains(t, info.Available, "short")
+	assert.Contains(t, info.Available, "long")
+	assert.Contains(t, info.Available, "conveyance")
+	assert.Equal(t, 1, info.Durations["short"])
+	assert.Equal(t, 60, info.Durations["long"])
+	assert.Equal(t, 3, info.Durations["conveyance"])
+}
+
+// TestGoString verifies the null-terminated C string decoder.
+func TestGoString(t *testing.T) {
 	cases := []struct {
 		name string
 		s    string
 	}{
 		{"empty", ""},
 		{"simple", "hello"},
-		{"unicode", "smartctl-7.5"},
+		{"version", "smartmon-7.5"},
 		{"with spaces", "/dev/sda type=ata"},
 	}
 	for _, tc := range cases {
@@ -332,18 +354,17 @@ func TestCGoString(t *testing.T) {
 			if len(tc.s) > 0 {
 				ptr = unsafe.Pointer(&buf[0])
 			}
-			got := cGoString(ptr)
-			assert.Equal(t, tc.s, got)
+			assert.Equal(t, tc.s, goString(ptr))
 		})
 	}
 }
 
-// TestCGoString_Zero verifies that nil pointer returns an empty string.
-func TestCGoString_Zero(t *testing.T) {
-	assert.Equal(t, "", cGoString(nil))
+// TestGoString_Nil verifies that a nil pointer returns an empty string.
+func TestGoString_Nil(t *testing.T) {
+	assert.Equal(t, "", goString(nil))
 }
 
-// TestLastError_NoFuncs verifies that lastError on uninitialised backend returns generic error.
+// TestLastError_NoFuncs verifies that lastError on an uninitialised backend returns a sensible error.
 func TestLastError_NoFuncs(t *testing.T) {
 	b := &LibBackend{}
 	err := b.lastError()
@@ -354,13 +375,12 @@ func TestLastError_NoFuncs(t *testing.T) {
 // TestCallWithStringOut_NilOutput verifies that a nil output pointer is reported as an error.
 func TestCallWithStringOut_NilOutput(t *testing.T) {
 	b := newTestBackend(t, &libFuncs{
-		// fn returns success (rc=0) but leaves outPtr as nil
 		freeString: func(unsafe.Pointer) {},
-		lastError:  makeFakeLastError(t, ""),
+		lastError:  fakeLastError(t, ""),
 	})
 
 	_, err := b.callWithStringOut(func(out *unsafe.Pointer) int32 {
-		// Deliberately do not set *out to simulate a library bug.
+		// Deliberately do not write to *out to simulate a library bug.
 		return 0
 	})
 	require.Error(t, err)
@@ -368,7 +388,7 @@ func TestCallWithStringOut_NilOutput(t *testing.T) {
 }
 
 // TestIntegration_ScanDevices is an integration test that runs only when
-// LIBSMARTCTL_PATH is set to a real libsmartctl shared library path.
+// SMARTMON_LIB_PATH is set to a real smartmon wrapper library path.
 func TestIntegration_ScanDevices(t *testing.T) {
 	libPath := integrationLibPath(t)
 	b, err := New(WithLibraryPath(libPath))
@@ -383,13 +403,34 @@ func TestIntegration_ScanDevices(t *testing.T) {
 	}
 }
 
-// integrationLibPath returns the libsmartctl path from LIBSMARTCTL_PATH env var,
+// TestIntegration_GetSMARTInfo is an integration test that exercises the full
+// SMART data path against a real device. Set SMARTMON_SDK_DEVICE to run.
+func TestIntegration_GetSMARTInfo(t *testing.T) {
+	libPath := integrationLibPath(t)
+	devicePath, ok := os.LookupEnv("SMARTMON_SDK_DEVICE")
+	if !ok {
+		t.Skip("set SMARTMON_SDK_DEVICE to run SMART data integration tests")
+	}
+
+	b, err := New(WithLibraryPath(libPath))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = b.Close() })
+
+	info, err := b.GetSMARTInfo(context.Background(), devicePath)
+	require.NoError(t, err)
+	assert.NotEmpty(t, info.ModelName)
+	assert.NotEmpty(t, info.SerialNumber)
+	t.Logf("model=%s serial=%s", info.ModelName, info.SerialNumber)
+}
+
+// integrationLibPath returns the wrapper library path from SMARTMON_LIB_PATH,
 // or skips the test when the variable is not set.
 func integrationLibPath(t *testing.T) string {
 	t.Helper()
-	path, ok := os.LookupEnv("LIBSMARTCTL_PATH")
+	path, ok := os.LookupEnv("SMARTMON_LIB_PATH")
 	if !ok {
-		t.Skip("set LIBSMARTCTL_PATH to run integration tests")
+		t.Skip("set SMARTMON_LIB_PATH to run integration tests")
 	}
 	return path
 }
+

@@ -1,0 +1,191 @@
+name: sync-upstream
+
+on:
+  schedule:
+    - cron: "0 6 * * 0" # weekly: Sunday at 06:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.PAT }}
+
+      - name: Configure git
+        run: |
+          git config user.name "smartmontools-go bot"
+          git config user.email "bot@dianlight.github.io"
+
+      - name: Add upstream remote
+        run: |
+          git remote add upstream https://github.com/smartmontools/smartmontools.git
+          git fetch upstream main
+
+      - name: Rebase onto upstream
+        id: rebase
+        run: |
+          git checkout -b sync-temp upstream/main
+          git rebase origin/main || {
+            echo "rebase_conflict=true" >> "$GITHUB_OUTPUT"
+            echo "Rebase conflicts detected — manual intervention required." >&2
+            exit 1
+          }
+
+      - name: Force-push synced branch
+        if: steps.rebase.outputs.rebase_conflict != 'true'
+        run: |
+          git push origin sync-temp:main --force-with-lease
+          git branch -D sync-temp
+
+      - name: File issue on rebase conflict
+        if: failure() && steps.rebase.outputs.rebase_conflict == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const title = "Upstream rebase conflict — manual sync required";
+            const body = [
+              "The weekly `sync-upstream` workflow encountered a rebase conflict.",
+              "",
+              "## Steps to resolve",
+              "1. Fetch the latest upstream: `git fetch upstream main`",
+              "2. Rebase manually: `git rebase upstream/main`",
+              "3. Resolve conflicts, commit, and force-push: `git push origin main --force-with-lease`",
+              "",
+              `Workflow run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}`,
+            ].join("\n");
+            const { data: issues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo:  context.repo.repo,
+              state: "open",
+              labels: "upstream-sync",
+            });
+            const existing = issues.find(i => i.title === title);
+            if (!existing) {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo:  context.repo.repo,
+                title,
+                body,
+                labels: ["upstream-sync"],
+              });
+            }
+
+  # ----------------------------------------------------------------
+  # Build libsmartctl after successful sync
+  # ----------------------------------------------------------------
+  build:
+    needs: sync
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            arch: amd64
+            runner: ubuntu-latest
+          - os: ubuntu-24.04-arm
+            arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    name: build (${{ matrix.arch }}, linux)
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            autoconf automake libtool g++ libcap-dev \
+            libsystemd-dev libselinux1-dev
+
+      - name: Configure
+        run: |
+          ./autogen.sh
+          ./configure \
+            --enable-shared \
+            --disable-static \
+            --enable-libsmartctl \
+            CFLAGS="-fPIC" \
+            CXXFLAGS="-fPIC -DBUILDING_LIBSMARTCTL"
+
+      - name: Build
+        run: |
+          make -j$(nproc)
+          mkdir -p dist
+          cp src/.libs/libsmartctl.so* dist/ 2>/dev/null || true
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: libsmartctl-linux-${{ matrix.arch }}
+          path: dist/
+          if-no-files-found: error
+
+  # ----------------------------------------------------------------
+  # macOS build (Intel + Apple Silicon via native runners)
+  # ----------------------------------------------------------------
+  build-macos:
+    needs: sync
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-latest
+            arch: arm64
+          - runner: macos-13
+            arch: amd64
+    runs-on: ${{ matrix.runner }}
+    name: build (${{ matrix.arch }}, macos)
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: brew install autoconf automake libtool
+
+      - name: Configure
+        run: |
+          ./autogen.sh
+          ./configure \
+            --enable-shared \
+            --disable-static \
+            --enable-libsmartctl \
+            CFLAGS="-fPIC" \
+            CXXFLAGS="-fPIC -DBUILDING_LIBSMARTCTL"
+
+      - name: Build
+        run: |
+          make -j$(sysctl -n hw.logicalcpu)
+          mkdir -p dist
+          cp src/.libs/libsmartctl.dylib dist/ 2>/dev/null || true
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: libsmartctl-macos-${{ matrix.arch }}
+          path: dist/
+          if-no-files-found: error
+
+  # ----------------------------------------------------------------
+  # Attach build artifacts to a GitHub Release when a tag is pushed
+  # ----------------------------------------------------------------
+  release:
+    needs: [build, build-macos]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+          pattern: "libsmartctl-*"
+          merge-multiple: false
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/**/*
