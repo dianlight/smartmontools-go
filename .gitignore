@@ -36,3 +36,4 @@ go.work.sum
 
 # smartmontools-sdk artifacts (populated by scripts/setup-lib-backend.sh)
 backends/lib/sdk/
+.playwright-mcp/
