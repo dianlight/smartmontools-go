@@ -7,18 +7,24 @@
 //
 //	scripts/setup-lib-backend.sh
 //
-// Run the example:
+// Run the example with automatic library resolution:
 //
 //	SMARTMON_LIB_PATH=backends/lib/sdk/libsmartmon_go.dylib go run .  # macOS
 //	SMARTMON_LIB_PATH=backends/lib/sdk/libsmartmon_go.so    go run .  # Linux
 //
-// Or pass the path explicitly:
+// When SMARTMON_LIB_PATH is not set New() searches the standard system library
+// paths (LD_LIBRARY_PATH / DYLD_LIBRARY_PATH, /usr/local/lib, etc.).
+// If SMARTMON_LIB_PATH points to a missing file a warning is logged and the
+// system search is used as a fallback.
+//
+// Pass an explicit path to bypass all automatic resolution:
 //
 //	go run . -lib /path/to/libsmartmon_go.so
 package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"os"
 
@@ -30,6 +36,9 @@ import (
 )
 
 func main() {
+	libPath := flag.String("lib", "", "explicit path to libsmartmon_go.{so,dylib} (overrides SMARTMON_LIB_PATH and system search)")
+	flag.Parse()
+
 	blue := color.New(color.FgBlue).SprintFunc()
 	green := color.New(color.FgGreen).SprintFunc()
 	red := color.New(color.FgRed).SprintFunc()
@@ -39,28 +48,39 @@ func main() {
 	fmt.Println(blue("======================================"))
 	fmt.Println()
 
-	// Build options. An explicit library path can be provided via
-	// SMARTMON_LIB_PATH; otherwise the backend searches well-known locations.
+	// Build options.  WithTLogHandler wires up structured logging so that any
+	// warnings emitted by New() (e.g. SMARTMON_LIB_PATH missing, duplicate
+	// system library detected) are visible on the terminal.
 	libOpts := []libbackend.Option{
 		libbackend.WithTLogHandler(tlog.NewLoggerWithLevel(tlog.LevelInfo)),
 	}
-	if path, ok := os.LookupEnv("SMARTMON_LIB_PATH"); ok {
-		libOpts = append(libOpts, libbackend.WithLibraryPath(path))
-		fmt.Printf("Using library: %s\n\n", blue(path))
-	} else {
-		fmt.Println(yellow("SMARTMON_LIB_PATH not set – searching default locations"))
+
+	switch {
+	case *libPath != "":
+		// Explicit -lib flag: bypass all automatic resolution.
+		libOpts = append(libOpts, libbackend.WithLibraryPath(*libPath))
+		fmt.Printf("Using explicit library path: %s\n\n", blue(*libPath))
+	case os.Getenv("SMARTMON_LIB_PATH") != "":
+		// SMARTMON_LIB_PATH is set; New() will handle it automatically,
+		// including a fallback if the file is missing.
+		fmt.Printf("SMARTMON_LIB_PATH=%s (handled by New)\n\n",
+			blue(os.Getenv("SMARTMON_LIB_PATH")))
+	default:
+		fmt.Println(yellow("SMARTMON_LIB_PATH not set – searching standard system library paths"))
 		fmt.Println()
 	}
 
-	// Create the LibBackend. This dlopen()s the shared library and initialises
+	// Create the LibBackend.  This dlopen()s the shared library and initialises
 	// the smartmontools singleton; no child process is spawned.
+	// New() resolves the library path in the order:
+	//   WithLibraryPath > SMARTMON_LIB_PATH (with fallback) > system search.
 	lib, err := libbackend.New(libOpts...)
 	if err != nil {
 		fmt.Println(red(fmt.Sprintf("✗ Failed to load smartmon wrapper: %v", err)))
 		fmt.Println()
 		fmt.Println("Build the wrapper library with:")
 		fmt.Println("  scripts/setup-lib-backend.sh")
-		fmt.Println("Then set SMARTMON_LIB_PATH to the resulting .so/.dylib path.")
+		fmt.Println("Then set SMARTMON_LIB_PATH or copy to a standard library directory.")
 		os.Exit(1)
 	}
 	defer func() {

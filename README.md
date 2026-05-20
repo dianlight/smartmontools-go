@@ -490,27 +490,59 @@ go run main.go
 
 ## Architecture
 
-This library uses a command-line wrapper approach, executing `smartctl` commands and parsing their JSON output. The library leverages smartmontools' built-in JSON output format for reliable and structured data extraction.
+This library provides two backend implementations:
 
-While the project references libgoffi in its description, the current implementation uses the command-line interface for maximum compatibility and reliability. Future versions may incorporate direct library bindings using libgoffi for enhanced performance.
+### ExecBackend (default)
+
+Shells out to the `smartctl` binary and parses its JSON output. Maximum compatibility, zero extra dependencies beyond smartmontools itself.
+
+### LibBackend (purego FFI — Linux/macOS)
+
+Loads a pre-built smartmon wrapper shared library (`libsmartmon_go.so` /
+`libsmartmon_go.dylib`) at runtime using [ebitengine/purego](https://github.com/ebitengine/purego) — **no CGO required**.  The shared library wraps the static `libsmartmon.a` from the [dianlight/smartmontools-sdk](https://github.com/dianlight/smartmontools-sdk) releases.
+
+Build the wrapper once:
+
+```sh
+scripts/setup-lib-backend.sh
+export SMARTMON_LIB_PATH=$(pwd)/backends/lib/sdk/libsmartmon_go.dylib  # macOS
+# export SMARTMON_LIB_PATH=$(pwd)/backends/lib/sdk/libsmartmon_go.so  # Linux
+```
+
+Library resolution order in `libbackend.New()`:
+
+1. `WithLibraryPath(path)` option — always highest priority.
+2. `SMARTMON_LIB_PATH` env var — used if the file exists; a warning is logged
+   and the system search is used as fallback when the file is missing.  A
+   warning is also logged when the library is found in a different standard
+   system directory.
+3. Standard system paths — dynamic linker (`LD_LIBRARY_PATH` /
+   `DYLD_LIBRARY_PATH` / rpath) then well-known absolute paths
+   (`/usr/local/lib`, `/opt/homebrew/lib`, etc.).
+
+```go
+// Automatic resolution (reads SMARTMON_LIB_PATH or searches system paths):
+lib, err := libbackend.New()
+
+// Explicit path:
+lib, err := libbackend.New(libbackend.WithLibraryPath("/usr/local/lib/libsmartmon_go.so"))
+```
 
 📚 **For a comprehensive analysis of different SMART access approaches**, see our [Architecture Decision Record (ADR-001)](./docs/architecture/ADR-001-smart-access-approaches.md), which covers:
-- Command wrapper (current approach)
+- Command wrapper (current default approach)
 - Direct ioctl access
-- Shared library with FFI
+- Shared library with FFI (implemented as LibBackend)
 - Hybrid approaches
-
-The ADR includes detailed comparisons, code examples, performance benchmarks, and recommendations for different use cases.
 
 ## Implementation details
 
-- Execution model: the library locates (or is given) a `smartctl` binary and executes it (os/exec). Commands use `--json` where available and the library parses the resulting JSON output.
-- Configurable path: you can pass a custom path with `NewClientWithPath(path string)` if `smartctl` is not on PATH or you want to use a specific binary.
+- **ExecBackend**: locates (or is given) a `smartctl` binary and executes it (`os/exec`). Commands use `--json` where available and the library parses the resulting JSON output.
+- **LibBackend**: `dlopen`s `libsmartmon_go.so`/`.dylib` via purego and calls functions exported by the C++ wrapper. No child process is spawned.
+- Configurable path: you can pass a custom path with `NewClientWithPath(path string)` if `smartctl` is not on PATH or you want to use a specific binary (ExecBackend only).
 - Permissions: many SMART operations require root/administrator privileges or appropriate device access. Expect `permission denied` errors when running without sufficient rights.
-- Error handling: the library returns errors when `smartctl` exits non-zero, when JSON parsing fails, or when required fields are missing. Consumers should inspect errors and possibly the wrapped `*exec.ExitError` for diagnostics.
-- Limitations: because this approach shells out to an external binary, it has higher process overhead and depends on the installed smartmontools version and platform support. It does not (yet) provide direct ioctl access or in-process bindings.
+- Error handling: the library returns errors when `smartctl` exits non-zero (ExecBackend), when JSON parsing fails, or when required fields are missing. Consumers should inspect errors and possibly the wrapped `*exec.ExitError` for diagnostics.
 
-Example command run by the library (illustrative):
+Example command run by ExecBackend (illustrative):
 
 ```text
 smartctl --json -a /dev/sda
@@ -528,20 +560,20 @@ Short-term (current):
 - Stabilize the exec-based API surface (ScanDevices, GetSMARTInfo, CheckHealth, RunSelfTest).
 - Improve error messages and diagnostics when `smartctl` is missing, incompatible, or returns non-JSON output.
 - Add more unit tests that mock `smartctl` JSON output.
+- Add integration tests for LibBackend against real devices in CI.
 
 Mid-term:
-- Add optional libgoffi-based bindings to call smartmontools in-process where supported.
 - Implement ioctl-based device access for platforms where direct calls are preferable and safe.
 - Provide clearer compatibility matrix and CI jobs for Linux/macOS/Windows.
+- Publish pre-built `libsmartmon_go` binaries as release assets for common platforms.
 
 Long-term:
-- Offer a native Go implementation/path that does not require an external `smartctl` binary for common operations.
 - Optimize performance and reduce process creation overhead for large-scale monitoring setups.
 
 How to help:
-- If you'd like to work on native bindings, start by opening an issue describing the platform and approach (libgoffi vs ioctl-first).
 - Add tests that include representative `smartctl --json` outputs (captured from different smartmontools versions/devices).
 - Document platform-specific permission and packaging notes (e.g., macOS notarization, Windows admin requirements).
+- Test LibBackend on additional Linux distributions and architectures.
 
 ## License
 
