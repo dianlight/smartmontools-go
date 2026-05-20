@@ -84,10 +84,20 @@ if [ ! -d "${INCLUDE_DIR}" ] || [ ! -f "${LIB_DIR}/libsmartmon.a" ]; then
   exit 1
 fi
 
+# ── Install substitute smartmon_config.h ────────────────────────────────────
+# The SDK release archive omits the autoconf-generated smartmon_config.h.
+# We provide a cross-platform hand-crafted substitute.
+CONFIG_SRC="${REPO_ROOT}/backends/lib/csrc/smartmon_config.h"
+CONFIG_DST="${INCLUDE_DIR}/smartmon/smartmon_config.h"
+if [ ! -f "${CONFIG_DST}" ]; then
+  echo "Installing substitute smartmon_config.h..."
+  cp "${CONFIG_SRC}" "${CONFIG_DST}"
+fi
+
 # ── Compile wrapper ─────────────────────────────────────────────────────────
 echo "Compiling smartmon_go wrapper shared library..."
 
-CXX="${CXX:-g++}"
+CXX="${CXX:-c++}"
 CXXFLAGS_COMMON="-std=c++17 -fPIC -O2 -I${INCLUDE_DIR}"
 
 case "${OS_TAG}" in
@@ -102,12 +112,21 @@ case "${OS_TAG}" in
     ;;
   darwin)
     OUT="${SDK_DIR}/libsmartmon_go.dylib"
-    "${CXX}" ${CXXFLAGS_COMMON} \
+    # On newer Xcode/macOS SDKs the libc++ headers may not be on the default
+    # search path; add them explicitly via xcrun.
+    MACOS_SDK="$(xcrun --show-sdk-path 2>/dev/null || true)"
+    MACOS_LIBCXX_INCLUDE="${MACOS_SDK}/usr/include/c++/v1"
+    EXTRA_CXXFLAGS=""
+    if [ -d "${MACOS_LIBCXX_INCLUDE}" ]; then
+      EXTRA_CXXFLAGS="-I${MACOS_LIBCXX_INCLUDE} -isysroot ${MACOS_SDK}"
+    fi
+    "${CXX}" ${CXXFLAGS_COMMON} ${EXTRA_CXXFLAGS} \
       -dynamiclib \
+      -stdlib=libc++ \
       -o "${OUT}" \
       "${CPP_SRC}" \
       -L"${LIB_DIR}" -lsmartmon \
-      -lstdc++ -lm \
+      -lm \
       -framework CoreFoundation \
       -framework IOKit
     ;;

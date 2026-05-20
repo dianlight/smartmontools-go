@@ -347,7 +347,9 @@ int smartmon_scan_devices(char ** out_json) {
     std::lock_guard<std::mutex> lk(g_mutex);
     try {
         smart_device_list devlist;
-        if (!smi()->scan_smart_devices(devlist, "")) {
+        // Use the public overload that takes a types vector; empty means "all".
+        smart_devtype_list types;
+        if (!smi()->scan_smart_devices(devlist, types)) {
             tl_last_error = smi()->get_errmsg();
             return -1;
         }
@@ -487,7 +489,8 @@ int smartmon_run_selftest(const char * device, const char * dev_type, const char
                 tl_last_error = std::string("unknown test type: ") + test_type;
                 return -1;
             }
-            if (ataSmartTest(dev->to_ata(), testtype, /*force=*/false, &sv, 0) < 0) {
+            if (ataSmartTest(dev->to_ata(), testtype, /*force=*/false,
+                             ata_selective_selftest_args{}, &sv, /*num_sectors=*/0) < 0) {
                 tl_last_error = dev->get_errmsg();
                 return -1;
             }
@@ -525,7 +528,8 @@ int smartmon_abort_selftest(const char * device, const char * dev_type) {
         if (dev->is_ata()) {
             ata_smart_values sv = {};
             ataReadSmartValues(dev->to_ata(), &sv);
-            if (ataSmartTest(dev->to_ata(), ABORT_SELF_TEST, /*force=*/false, &sv, 0) < 0) {
+            if (ataSmartTest(dev->to_ata(), ABORT_SELF_TEST, /*force=*/false,
+                             ata_selective_selftest_args{}, &sv, /*num_sectors=*/0) < 0) {
                 tl_last_error = dev->get_errmsg();
                 return -1;
             }
