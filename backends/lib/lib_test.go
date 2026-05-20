@@ -3,9 +3,12 @@
 package lib
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"log/slog"
 	"os"
+	"path/filepath"
 	"testing"
 	"unsafe"
 
@@ -385,6 +388,90 @@ func TestCallWithStringOut_NilOutput(t *testing.T) {
 	})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "nil output")
+}
+
+// withDefaultLibPaths temporarily replaces defaultLibPaths for the duration of
+// the test and restores the original slice on cleanup.
+func withDefaultLibPaths(t *testing.T, paths []string) {
+	t.Helper()
+	orig := defaultLibPaths
+	defaultLibPaths = paths
+	t.Cleanup(func() { defaultLibPaths = orig })
+}
+
+// TestSameDir verifies the directory comparison helper used for path warnings.
+func TestSameDir(t *testing.T) {
+	assert.True(t, sameDir("/a/b/libfoo.so", "/a/b/libbar.so"), "same directory")
+	assert.False(t, sameDir("/a/b/libfoo.so", "/a/c/libfoo.so"), "sibling directories")
+	assert.False(t, sameDir("/usr/local/lib/lib.so", "/usr/lib/lib.so"), "different prefix")
+	// Cleaned paths must be treated as equal.
+	assert.True(t, sameDir("/a/b/../b/libfoo.so", "/a/b/libbar.so"), "cleaned path equals")
+}
+
+// TestFindSystemLibPath_NotFound verifies that findSystemLibPath returns (_, false)
+// when none of the default paths exist.
+func TestFindSystemLibPath_NotFound(t *testing.T) {
+	withDefaultLibPaths(t, []string{"/nonexistent/libsmartmon_go.so"})
+	_, ok := findSystemLibPath()
+	assert.False(t, ok)
+}
+
+// TestFindSystemLibPath_Found verifies that findSystemLibPath returns the first
+// existing path from defaultLibPaths.
+func TestFindSystemLibPath_Found(t *testing.T) {
+	dir := t.TempDir()
+	lib := filepath.Join(dir, "libsmartmon_go.so")
+	require.NoError(t, os.WriteFile(lib, []byte("stub"), 0o644))
+
+	withDefaultLibPaths(t, []string{"/nonexistent/nope.so", lib})
+
+	got, ok := findSystemLibPath()
+	assert.True(t, ok)
+	assert.Equal(t, lib, got)
+}
+
+// TestNew_EnvPath_Missing_FallsBack verifies that when SMARTMON_LIB_PATH points
+// to a missing file, New emits a warning and falls back to the system library
+// search.  The test expects a "not found" error because no system library is
+// installed in CI.
+func TestNew_EnvPath_Missing_FallsBack(t *testing.T) {
+	if _, err := New(); err == nil {
+		t.Skip("smartmon library is installed system-wide; skipping env-fallback test")
+	}
+	t.Setenv("SMARTMON_LIB_PATH", "/nonexistent/libsmartmon_go.so")
+
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn}))
+
+	_, err := New(WithSlogHandler(logger))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not found")
+	assert.Contains(t, buf.String(), "SMARTMON_LIB_PATH is set but the file was not found")
+}
+
+// TestNew_EnvPath_SystemLibWarning verifies that when SMARTMON_LIB_PATH points
+// to a valid path but the library also exists in a different standard system
+// path, New emits a warning before attempting to load.
+func TestNew_EnvPath_SystemLibWarning(t *testing.T) {
+	dir1 := t.TempDir()
+	dir2 := t.TempDir()
+
+	lib1 := filepath.Join(dir1, "libsmartmon_go.so")
+	lib2 := filepath.Join(dir2, "libsmartmon_go.so")
+	require.NoError(t, os.WriteFile(lib1, []byte("stub"), 0o644))
+	require.NoError(t, os.WriteFile(lib2, []byte("stub"), 0o644))
+
+	// Override defaultLibPaths so findSystemLibPath finds lib2.
+	withDefaultLibPaths(t, []string{lib2})
+	t.Setenv("SMARTMON_LIB_PATH", lib1)
+
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn}))
+
+	// New will warn and then fail (the stubs are not real shared libraries).
+	_, err := New(WithSlogHandler(logger))
+	require.Error(t, err)
+	assert.Contains(t, buf.String(), "SMARTMON_LIB_PATH is set but library also found in a different system path")
 }
 
 // TestIntegration_ScanDevices is an integration test that runs only when

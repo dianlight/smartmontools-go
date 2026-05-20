@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"sync"
 	"unsafe"
 
@@ -107,7 +108,15 @@ func withLogHandler(logger LogAdapter) Option {
 }
 
 // New creates a LibBackend by loading the smartmon wrapper library.
-// Library resolution order: WithLibraryPath → SMARTMON_LIB_PATH → default names → default paths.
+//
+// Library resolution order:
+//  1. [WithLibraryPath] option
+//  2. SMARTMON_LIB_PATH environment variable (if the file exists at that path).
+//     If SMARTMON_LIB_PATH is set but the file is absent a warning is logged
+//     and the search falls through to step 3.
+//     If SMARTMON_LIB_PATH resolves to a different directory than a library
+//     found in the system paths a warning is logged.
+//  3. Standard system library paths (dynamic linker names, then absolute paths).
 func New(opts ...Option) (*LibBackend, error) {
 	b := &LibBackend{
 		logHandler: tlog.NewLoggerWithLevel(tlog.LevelDebug),
@@ -117,10 +126,28 @@ func New(opts ...Option) (*LibBackend, error) {
 	}
 
 	if b.libPath == "" {
-		if p := os.Getenv("SMARTMON_LIB_PATH"); p != "" {
-			b.libPath = p
+		if envPath := os.Getenv("SMARTMON_LIB_PATH"); envPath != "" {
+			if _, err := os.Stat(envPath); err == nil {
+				b.libPath = envPath
+				// Warn when a library also exists in a different standard location,
+				// which may indicate a stale or unintended installation.
+				if sysPath, ok := findSystemLibPath(); ok && !sameDir(envPath, sysPath) {
+					b.logHandler.WarnContext(context.Background(),
+						"SMARTMON_LIB_PATH is set but library also found in a different system path",
+						"env_path", envPath,
+						"system_path", sysPath)
+				}
+			} else {
+				// env path is set but the file is missing — warn and fall back to the
+				// system-wide search so the backend can still start if the library is
+				// installed globally.
+				b.logHandler.WarnContext(context.Background(),
+					"SMARTMON_LIB_PATH is set but the file was not found; falling back to system library search",
+					"path", envPath)
+			}
 		}
 	}
+
 	if b.libPath == "" {
 		path, err := resolveLibPath()
 		if err != nil {
@@ -377,6 +404,33 @@ func resolveLibPath() (string, error) {
 			"Build it with:  scripts/setup-lib-backend.sh\n" +
 			"Then set SMARTMON_LIB_PATH or copy to a standard library directory.",
 	)
+}
+
+// findSystemLibPath returns the first library found among defaultLibPaths.
+// Unlike resolveLibPath it does not probe the dynamic linker, so it always
+// returns an absolute path suitable for directory comparison.
+func findSystemLibPath() (string, bool) {
+	for _, path := range defaultLibPaths {
+		if info, err := os.Stat(path); err == nil && !info.IsDir() {
+			return path, true
+		}
+	}
+	return "", false
+}
+
+// sameDir reports whether two file paths share the same directory.
+// Symlinks are resolved before comparing so that equivalent paths that differ
+// only in their symlink structure are not reported as diverging.
+func sameDir(a, b string) bool {
+	dirA := filepath.Clean(filepath.Dir(a))
+	dirB := filepath.Clean(filepath.Dir(b))
+	if ra, err := filepath.EvalSymlinks(dirA); err == nil {
+		dirA = ra
+	}
+	if rb, err := filepath.EvalSymlinks(dirB); err == nil {
+		dirB = rb
+	}
+	return dirA == dirB
 }
 
 // registerFuncs binds all C symbols from the loaded library via purego.
