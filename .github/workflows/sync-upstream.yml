@@ -1,18 +1,21 @@
 name: sync-upstream
 
 on:
+  push:
+    tags:
+      - "v*"
   schedule:
     - cron: "0 6 * * 0" # weekly: Sunday at 06:00 UTC
   workflow_dispatch:
 
-permissions:
-  contents: write
-
 jobs:
   sync:
+    permissions:
+      contents: write
+      issues: write
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           fetch-depth: 0
           token: ${{ secrets.PAT }}
@@ -45,7 +48,7 @@ jobs:
 
       - name: File issue on rebase conflict
         if: failure() && steps.rebase.outputs.rebase_conflict == 'true'
-        uses: actions/github-script@v7
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b
         with:
           script: |
             const title = "Upstream rebase conflict — manual sync required";
@@ -80,6 +83,8 @@ jobs:
   # Build libsmartctl after successful sync
   # ----------------------------------------------------------------
   build:
+    permissions:
+      contents: read
     needs: sync
     strategy:
       fail-fast: false
@@ -94,7 +99,9 @@ jobs:
     runs-on: ${{ matrix.runner }}
     name: build (${{ matrix.arch }}, linux)
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
 
       - name: Install build dependencies
         run: |
@@ -120,7 +127,7 @@ jobs:
           cp src/.libs/libsmartctl.so* dist/ 2>/dev/null || true
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: libsmartctl-linux-${{ matrix.arch }}
           path: dist/
@@ -130,6 +137,8 @@ jobs:
   # macOS build (Intel + Apple Silicon via native runners)
   # ----------------------------------------------------------------
   build-macos:
+    permissions:
+      contents: read
     needs: sync
     strategy:
       fail-fast: false
@@ -142,7 +151,9 @@ jobs:
     runs-on: ${{ matrix.runner }}
     name: build (${{ matrix.arch }}, macos)
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
 
       - name: Install build dependencies
         run: brew install autoconf automake libtool
@@ -164,7 +175,7 @@ jobs:
           cp src/.libs/libsmartctl.dylib dist/ 2>/dev/null || true
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: libsmartctl-macos-${{ matrix.arch }}
           path: dist/
@@ -175,17 +186,17 @@ jobs:
   # ----------------------------------------------------------------
   release:
     needs: [build, build-macos]
-    if: startsWith(github.ref, 'refs/tags/')
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           path: artifacts/
           pattern: "libsmartctl-*"
           merge-multiple: false
 
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65
         with:
           files: artifacts/**/*

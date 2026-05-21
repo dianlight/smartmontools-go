@@ -509,7 +509,7 @@ export SMARTMON_LIB_PATH=$(pwd)/backends/lib/sdk/libsmartmon_go.dylib  # macOS
 # export SMARTMON_LIB_PATH=$(pwd)/backends/lib/sdk/libsmartmon_go.so  # Linux
 ```
 
-Library resolution order in `libbackend.New()`:
+Library resolution order in `lib.New()`:
 
 1. `WithLibraryPath(path)` option — always highest priority.
 2. `SMARTMON_LIB_PATH` env var — used if the file exists; a warning is logged
@@ -522,10 +522,10 @@ Library resolution order in `libbackend.New()`:
 
 ```go
 // Automatic resolution (reads SMARTMON_LIB_PATH or searches system paths):
-lib, err := libbackend.New()
+lib, err := lib.New()
 
 // Explicit path:
-lib, err := libbackend.New(libbackend.WithLibraryPath("/usr/local/lib/libsmartmon_go.so"))
+lib, err := lib.New(lib.WithLibraryPath("/usr/local/lib/libsmartmon_go.so"))
 ```
 
 📚 **For a comprehensive analysis of different SMART access approaches**, see our [Architecture Decision Record (ADR-001)](./docs/architecture/ADR-001-smart-access-approaches.md), which covers:
