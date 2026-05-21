@@ -520,4 +520,3 @@ func integrationLibPath(t *testing.T) string {
 	}
 	return path
 }
-

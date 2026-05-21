@@ -14,7 +14,7 @@
 //  1. [WithLibraryPath] option — always takes precedence.
 //  2. SMARTMON_LIB_PATH environment variable.
 //     • File exists → used directly.  A warning is logged if a library is also
-//       found in a different standard system directory.
+//     found in a different standard system directory.
 //     • File missing → warning logged; falls through to step 3.
 //  3. Standard system paths — dynamic-linker names (LD_LIBRARY_PATH /
 //     DYLD_LIBRARY_PATH / rpath) followed by well-known absolute paths such as
@@ -31,11 +31,11 @@ type (
 
 // Shared type aliases reuse the module's SMART domain model in the lib backend.
 type (
-	Device        = smtypes.Device
-	SMARTInfo     = smtypes.SMARTInfo
-	SmartStatus   = smtypes.SmartStatus
-	SmartSupport  = smtypes.SmartSupport
-	AtaSmartData  = smtypes.AtaSmartData
-	SelfTestInfo  = smtypes.SelfTestInfo
+	Device          = smtypes.Device
+	SMARTInfo       = smtypes.SMARTInfo
+	SmartStatus     = smtypes.SmartStatus
+	SmartSupport    = smtypes.SmartSupport
+	AtaSmartData    = smtypes.AtaSmartData
+	SelfTestInfo    = smtypes.SelfTestInfo
 	DiscoveryResult = smtypes.DiscoveryResult
 )
