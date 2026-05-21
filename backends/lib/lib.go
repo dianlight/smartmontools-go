@@ -413,7 +413,7 @@ func resolveLibPath() (string, error) {
 			"Build it with:  scripts/setup-lib-backend.sh\n" +
 			"The script downloads libsmartmon.a from github.com/dianlight/smartmontools-sdk\n" +
 			"and compiles the wrapper. Then set SMARTMON_LIB_PATH or copy to a standard\n" +
-			"library directory.",
+			"library directory",
 	)
 }
 
