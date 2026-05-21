@@ -120,8 +120,14 @@ static std::string build_ata_json(ata_device * ata, const char * devname, const 
         tl_last_error = ata->get_errmsg();
         return "";
     }
-    ataReadSmartValues(ata, &sv);
-    ataReadSmartThresholds(ata, &thresh);
+    if (ataReadSmartValues(ata, &sv) < 0) {
+        tl_last_error = std::string("failed to read SMART values for device ") + devname + ": " + ata->get_errmsg();
+        return "";
+    }
+    if (ataReadSmartThresholds(ata, &thresh) < 0) {
+        tl_last_error = std::string("failed to read SMART thresholds for device ") + devname + ": " + ata->get_errmsg();
+        return "";
+    }
 
     int  smart_status = ataSmartStatus2(ata);
     int  rotation     = ata_get_rotation_rate(&id);
@@ -344,6 +350,10 @@ void smartmon_free_string(char * s) {
 }
 
 int smartmon_scan_devices(char ** out_json) {
+    if (!out_json) {
+        tl_last_error = "NULL output pointer";
+        return -1;
+    }
     std::lock_guard<std::mutex> lk(g_mutex);
     try {
         smart_device_list devlist;
@@ -372,6 +382,10 @@ int smartmon_scan_devices(char ** out_json) {
 }
 
 int smartmon_get_smart_data(const char * device, const char * dev_type, char ** out_json) {
+    if (!out_json) {
+        tl_last_error = "NULL output pointer";
+        return -1;
+    }
     std::lock_guard<std::mutex> lk(g_mutex);
     try {
         auto dev = open_dev(device, dev_type);
@@ -398,6 +412,10 @@ int smartmon_get_smart_data(const char * device, const char * dev_type, char ** 
 }
 
 int smartmon_check_health(const char * device, const char * dev_type, int * out_healthy) {
+    if (!out_healthy) {
+        tl_last_error = "NULL output pointer";
+        return -1;
+    }
     std::lock_guard<std::mutex> lk(g_mutex);
     try {
         auto dev = open_dev(device, dev_type);
@@ -476,7 +494,10 @@ int smartmon_run_selftest(const char * device, const char * dev_type, const char
 
         if (dev->is_ata()) {
             ata_smart_values sv = {};
-            ataReadSmartValues(dev->to_ata(), &sv);
+            if (ataReadSmartValues(dev->to_ata(), &sv) < 0) {
+                tl_last_error = std::string("failed to read SMART values for device ") + device + ": " + dev->get_errmsg();
+                return -1;
+            }
 
             int testtype;
             if (strcmp(test_type, "short") == 0)
@@ -527,7 +548,10 @@ int smartmon_abort_selftest(const char * device, const char * dev_type) {
 
         if (dev->is_ata()) {
             ata_smart_values sv = {};
-            ataReadSmartValues(dev->to_ata(), &sv);
+            if (ataReadSmartValues(dev->to_ata(), &sv) < 0) {
+                tl_last_error = std::string("failed to read SMART values for device ") + device + ": " + dev->get_errmsg();
+                return -1;
+            }
             if (ataSmartTest(dev->to_ata(), ABORT_SELF_TEST, /*force=*/false,
                              ata_selective_selftest_args{}, &sv, /*num_sectors=*/0) < 0) {
                 tl_last_error = dev->get_errmsg();

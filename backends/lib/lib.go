@@ -82,6 +82,8 @@ type LibBackend struct {
 	funcs      *libFuncs
 	logHandler LogAdapter
 	closeOnce  sync.Once
+	mu         sync.RWMutex
+	closed     bool
 }
 
 // Ensure LibBackend satisfies the Backend interface at compile time.
@@ -112,7 +114,9 @@ func WithLogHandler(logger LogAdapter) Option {
 
 func withLogHandler(logger LogAdapter) Option {
 	return func(b *LibBackend) {
-		b.logHandler = logger
+		if logger != nil {
+			b.logHandler = logger
+		}
 	}
 }
 
@@ -193,8 +197,13 @@ func (b *LibBackend) Name() string { return "lib" }
 func (b *LibBackend) Close() error {
 	var closeErr error
 	b.closeOnce.Do(func() {
+		b.mu.Lock()
+		b.closed = true
+		b.mu.Unlock()
+
 		if b.funcs != nil {
 			b.funcs.cleanup()
+			b.funcs = nil
 		}
 		if b.libHandle != 0 {
 			if err := purego.Dlclose(b.libHandle); err != nil {
@@ -208,6 +217,13 @@ func (b *LibBackend) Close() error {
 
 // ScanDevices returns the list of storage devices visible to the wrapper library.
 func (b *LibBackend) ScanDevices(ctx context.Context) ([]Device, error) {
+	b.mu.RLock()
+	if b.closed {
+		b.mu.RUnlock()
+		return nil, errors.New("backend is closed")
+	}
+	b.mu.RUnlock()
+
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -241,6 +257,13 @@ func (b *LibBackend) ScanDevices(ctx context.Context) ([]Device, error) {
 
 // GetSMARTInfo returns comprehensive SMART information for the given device.
 func (b *LibBackend) GetSMARTInfo(ctx context.Context, devicePath string) (*SMARTInfo, error) {
+	b.mu.RLock()
+	if b.closed {
+		b.mu.RUnlock()
+		return nil, errors.New("backend is closed")
+	}
+	b.mu.RUnlock()
+
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -262,6 +285,13 @@ func (b *LibBackend) GetSMARTInfo(ctx context.Context, devicePath string) (*SMAR
 
 // CheckHealth returns true when the device passes its SMART overall-health assessment.
 func (b *LibBackend) CheckHealth(ctx context.Context, devicePath string) (bool, error) {
+	b.mu.RLock()
+	if b.closed {
+		b.mu.RUnlock()
+		return false, errors.New("backend is closed")
+	}
+	b.mu.RUnlock()
+
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -279,6 +309,13 @@ func (b *LibBackend) CheckHealth(ctx context.Context, devicePath string) (bool, 
 
 // GetDeviceInfo returns raw key/value device information for the given device.
 func (b *LibBackend) GetDeviceInfo(ctx context.Context, devicePath string) (map[string]any, error) {
+	b.mu.RLock()
+	if b.closed {
+		b.mu.RUnlock()
+		return nil, errors.New("backend is closed")
+	}
+	b.mu.RUnlock()
+
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -301,6 +338,13 @@ func (b *LibBackend) GetDeviceInfo(ctx context.Context, devicePath string) (map[
 // RunSelfTest starts a SMART self-test of the given type on the device.
 // testType must be "short", "long", or "conveyance".
 func (b *LibBackend) RunSelfTest(ctx context.Context, devicePath string, testType string) error {
+	b.mu.RLock()
+	if b.closed {
+		b.mu.RUnlock()
+		return errors.New("backend is closed")
+	}
+	b.mu.RUnlock()
+
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -318,6 +362,13 @@ func (b *LibBackend) RunSelfTest(ctx context.Context, devicePath string, testTyp
 // GetAvailableSelfTests returns the self-test types available on the device and
 // their estimated durations, parsed from the full SMART data.
 func (b *LibBackend) GetAvailableSelfTests(ctx context.Context, devicePath string) (*SelfTestInfo, error) {
+	b.mu.RLock()
+	if b.closed {
+		b.mu.RUnlock()
+		return nil, errors.New("backend is closed")
+	}
+	b.mu.RUnlock()
+
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -349,6 +400,13 @@ func (b *LibBackend) GetAvailableSelfTests(ctx context.Context, devicePath strin
 
 // EnableSMART enables SMART on the given ATA device.
 func (b *LibBackend) EnableSMART(ctx context.Context, devicePath string) error {
+	b.mu.RLock()
+	if b.closed {
+		b.mu.RUnlock()
+		return errors.New("backend is closed")
+	}
+	b.mu.RUnlock()
+
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -365,6 +423,13 @@ func (b *LibBackend) EnableSMART(ctx context.Context, devicePath string) error {
 
 // DisableSMART disables SMART on the given ATA device.
 func (b *LibBackend) DisableSMART(ctx context.Context, devicePath string) error {
+	b.mu.RLock()
+	if b.closed {
+		b.mu.RUnlock()
+		return errors.New("backend is closed")
+	}
+	b.mu.RUnlock()
+
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -381,6 +446,13 @@ func (b *LibBackend) DisableSMART(ctx context.Context, devicePath string) error 
 
 // AbortSelfTest aborts a running SMART self-test on the given device.
 func (b *LibBackend) AbortSelfTest(ctx context.Context, devicePath string) error {
+	b.mu.RLock()
+	if b.closed {
+		b.mu.RUnlock()
+		return errors.New("backend is closed")
+	}
+	b.mu.RUnlock()
+
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -408,13 +480,7 @@ func resolveLibPath() (string, error) {
 			return path, nil
 		}
 	}
-	return "", errors.New(
-		"smartmon wrapper library (libsmartmon_go.{so,dylib}) not found.\n" +
-			"Build it with:  scripts/setup-lib-backend.sh\n" +
-			"The script downloads libsmartmon.a from github.com/dianlight/smartmontools-sdk\n" +
-			"and compiles the wrapper. Then set SMARTMON_LIB_PATH or copy to a standard\n" +
-			"library directory",
-	)
+	return "", errors.New("smartmon wrapper library (libsmartmon_go.{so,dylib}) not found; build it with scripts/setup-lib-backend.sh which downloads libsmartmon.a from github.com/dianlight/smartmontools-sdk and compiles the wrapper, then set SMARTMON_LIB_PATH or copy to a standard library directory")
 }
 
 // findSystemLibPath returns the first library found among defaultLibPaths.

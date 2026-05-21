@@ -3,14 +3,14 @@
 // Package main demonstrates using the LibBackend (SDK) that loads the smartmon
 // wrapper library at runtime via purego — no CGO required.
 //
-// Build the wrapper library first:
+// Build the wrapper library first (from repository root):
 //
 //	scripts/setup-lib-backend.sh
 //
-// Run the example with automatic library resolution:
+// Run the example with automatic library resolution (from repository root):
 //
-//	SMARTMON_LIB_PATH=backends/lib/sdk/libsmartmon_go.dylib go run .  # macOS
-//	SMARTMON_LIB_PATH=backends/lib/sdk/libsmartmon_go.so    go run .  # Linux
+//	SMARTMON_LIB_PATH=backends/lib/sdk/libsmartmon_go.dylib go run examples/lib  # macOS
+//	SMARTMON_LIB_PATH=backends/lib/sdk/libsmartmon_go.so    go run examples/lib  # Linux
 //
 // When SMARTMON_LIB_PATH is not set New() searches the standard system library
 // paths (LD_LIBRARY_PATH / DYLD_LIBRARY_PATH, /usr/local/lib, etc.).
@@ -27,6 +27,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"runtime"
 
 	"github.com/dianlight/tlog"
 	"github.com/fatih/color"
@@ -105,8 +106,17 @@ func main() {
 	devices, err := client.ScanDevices(ctx)
 	if err != nil {
 		fmt.Println(yellow(fmt.Sprintf("Warning: %v", err)))
-		devices = []smartmontools.Device{{Name: "/dev/sda", Type: "auto"}}
-		fmt.Println("Falling back to /dev/sda")
+		fallbackDevice := "/dev/sda"
+		switch runtime.GOOS {
+		case "darwin":
+			fallbackDevice = "/dev/disk0"
+		case "linux":
+			fallbackDevice = "/dev/sda"
+		default:
+			fallbackDevice = "/dev/sda"
+		}
+		devices = []smartmontools.Device{{Name: fallbackDevice, Type: "auto"}}
+		fmt.Printf("Falling back to %s\n", fallbackDevice)
 	}
 	if len(devices) == 0 {
 		fmt.Println(red("No devices found. Ensure you have sufficient permissions (e.g. sudo)."))
