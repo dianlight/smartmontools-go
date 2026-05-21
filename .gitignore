@@ -8,8 +8,11 @@
 *.so
 *.dylib
 
-# Example binaries
-examples/*/example
+# Example binaries (any executable built inside an examples/* directory)
+examples/*/*
+!examples/*/*.go
+!examples/*/go.mod
+!examples/*/go.sum
 
 # Test binary, built with `go test -c`
 *.test
