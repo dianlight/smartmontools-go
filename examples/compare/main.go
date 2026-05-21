@@ -22,13 +22,19 @@
 //
 //	go run .
 //
-// This example uses ExecBackend as master and a simple stub as secondary so
+// This example uses ExecBackend as master and a snapshot-based secondary so
 // it runs on any machine without needing two distinct backend implementations.
-// Replace stubBackend with a real LibBackend in a production validation setup.
+// The secondary pre-fetches all device data from the master once (sequentially,
+// before the compare backend is created) and serves it entirely from memory —
+// no subprocess is ever spawned by the secondary, so there is zero contention.
+//
+// Replace snapshotBackend with a real LibBackend in a production validation
+// setup.
 package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 
@@ -58,6 +64,8 @@ func main() {
 	// Use a structured logger so compare warnings/errors appear in the output.
 	logger := tlog.NewLoggerWithLevel(tlog.LevelInfo)
 
+	ctx := context.Background()
+
 	// Master backend — the source of truth for all returned results.
 	master, err := execbackend.New(
 		execbackend.WithTLogHandler(logger),
@@ -67,16 +75,25 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Secondary backend — in a real scenario this would be a LibBackend or a
-	// different implementation. Here we use a passthrough stub that delegates
-	// to the same ExecBackend sequentially (after the master finishes), which
-	// avoids device contention while still demonstrating the compare wiring.
+	// Secondary backend — pre-fetches all device data from the master once
+	// (sequentially, before the compare backend is created) and then serves
+	// those cached results entirely from memory. Because the secondary never
+	// calls any subprocess, there is zero device contention when the compare
+	// backend later runs master and secondary in parallel.
 	//
-	// To test with a real second implementation, replace stub with:
+	// In production, replace snapshotBackend with a real alternative such as
+	// LibBackend:
 	//
 	//   lib, _ := libbackend.New(libbackend.WithTLogHandler(logger))
 	//   secondary = lib
-	secondary := &sequentialStub{delegate: master}
+	fmt.Println(blue("Pre-fetching device data for the snapshot secondary..."))
+	secondary, err := newSnapshotBackend(ctx, master)
+	if err != nil {
+		fmt.Println(red(fmt.Sprintf("✗ Failed to build snapshot: %v", err)))
+		os.Exit(1)
+	}
+	fmt.Println(green("✓ Snapshot ready"))
+	fmt.Println()
 
 	// Wrap both backends in the compare backend.
 	// Additional backends can be appended to the slice for broader coverage.
@@ -94,9 +111,9 @@ func main() {
 		}
 	}()
 
-	fmt.Printf("Active backends: %s (master) + %s (secondary stub)\n\n",
+	fmt.Printf("Active backends: %s (master) + %s (secondary snapshot)\n\n",
 		blue(master.Name()), blue(secondary.Name()))
-	fmt.Println(green("✓ CompareBackend ready — no mismatches expected with the stub"))
+	fmt.Println(green("✓ CompareBackend ready — no mismatches expected with the snapshot"))
 	fmt.Println()
 
 	// Wire the compare backend into the standard client API.
@@ -104,8 +121,6 @@ func main() {
 	if err != nil {
 		tlog.Fatal("Failed to create client", "error", err)
 	}
-
-	ctx := context.Background()
 
 	// ── Device discovery ──────────────────────────────────────────────────
 	fmt.Println(blue("Scanning for devices (both backends run in parallel)..."))
@@ -182,49 +197,101 @@ func main() {
 
 	fmt.Println(green("✓ CompareBackend example completed successfully"))
 	fmt.Println()
-	fmt.Println("Tip: replace stubBackend with a real LibBackend to compare exec vs SDK parity.")
+	fmt.Println("Tip: replace snapshotBackend with a real LibBackend to compare exec vs SDK parity.")
 	fmt.Println("     'compare: result mismatch' warnings = backends returned different data.")
 	fmt.Println("     'compare: secondary backend error'  = secondary backend failed.")
 }
 
-// sequentialStub is a secondary backend that delegates every call to an
-// existing backend sequentially. It is used in this example only to
-// demonstrate compare wiring without causing device contention from two
-// parallel smartctl processes hitting the same hardware simultaneously.
+// snapshotBackend is a secondary backend that pre-fetches all device data from
+// a source backend once, sequentially, and then serves it entirely from memory.
+// Because it never spawns any subprocess, running it as a compare secondary
+// causes zero device contention regardless of what the master backend does in
+// its parallel goroutine.
 //
 // In production, replace this with a real alternative implementation such as
-// LibBackend.
-type sequentialStub struct {
-	delegate smartmontools.Backend
+// LibBackend that queries the same device through a different code path.
+type snapshotBackend struct {
+	devices     []smartmontools.Device
+	smartInfos  map[string]*smartmontools.SMARTInfo
+	healths     map[string]bool
+	deviceInfos map[string]map[string]any
+	selfTests   map[string]*smartmontools.SelfTestInfo
 }
 
-func (s *sequentialStub) Name() string { return "stub(" + s.delegate.Name() + ")" }
-func (s *sequentialStub) Close() error { return nil } // delegate is closed by master
+// newSnapshotBackend fetches all device data from src once (sequentially) and
+// returns a snapshotBackend that replays those results from memory. Errors for
+// individual devices are silently ignored; if a device had an error during the
+// pre-fetch, the snapshot simply returns nil for that device.
+func newSnapshotBackend(ctx context.Context, src smartmontools.Backend) (*snapshotBackend, error) {
+	devices, err := src.ScanDevices(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("snapshot: ScanDevices: %w", err)
+	}
 
-func (s *sequentialStub) ScanDevices(ctx context.Context) ([]smartmontools.Device, error) {
-	return s.delegate.ScanDevices(ctx)
+	s := &snapshotBackend{
+		devices:     devices,
+		smartInfos:  make(map[string]*smartmontools.SMARTInfo, len(devices)),
+		healths:     make(map[string]bool, len(devices)),
+		deviceInfos: make(map[string]map[string]any, len(devices)),
+		selfTests:   make(map[string]*smartmontools.SelfTestInfo, len(devices)),
+	}
+
+	for _, dev := range devices {
+		if info, err := src.GetSMARTInfo(ctx, dev.Name); err == nil {
+			s.smartInfos[dev.Name] = info
+		}
+		if healthy, err := src.CheckHealth(ctx, dev.Name); err == nil {
+			s.healths[dev.Name] = healthy
+		}
+		if info, err := src.GetDeviceInfo(ctx, dev.Name); err == nil {
+			s.deviceInfos[dev.Name] = info
+		}
+		if tests, err := src.GetAvailableSelfTests(ctx, dev.Name); err == nil {
+			s.selfTests[dev.Name] = tests
+		}
+	}
+
+	return s, nil
 }
-func (s *sequentialStub) GetSMARTInfo(ctx context.Context, path string) (*smartmontools.SMARTInfo, error) {
-	return s.delegate.GetSMARTInfo(ctx, path)
+
+func (s *snapshotBackend) Name() string { return "snapshot" }
+func (s *snapshotBackend) Close() error { return nil }
+
+func (s *snapshotBackend) ScanDevices(_ context.Context) ([]smartmontools.Device, error) {
+	return s.devices, nil
 }
-func (s *sequentialStub) CheckHealth(ctx context.Context, path string) (bool, error) {
-	return s.delegate.CheckHealth(ctx, path)
+
+func (s *snapshotBackend) GetSMARTInfo(_ context.Context, path string) (*smartmontools.SMARTInfo, error) {
+	if info, ok := s.smartInfos[path]; ok {
+		return info, nil
+	}
+	return nil, errors.New("snapshot: no data for " + path)
 }
-func (s *sequentialStub) GetDeviceInfo(ctx context.Context, path string) (map[string]any, error) {
-	return s.delegate.GetDeviceInfo(ctx, path)
+
+func (s *snapshotBackend) CheckHealth(_ context.Context, path string) (bool, error) {
+	if healthy, ok := s.healths[path]; ok {
+		return healthy, nil
+	}
+	return false, errors.New("snapshot: no data for " + path)
 }
-func (s *sequentialStub) RunSelfTest(ctx context.Context, path, testType string) error {
-	return s.delegate.RunSelfTest(ctx, path, testType)
+
+func (s *snapshotBackend) GetDeviceInfo(_ context.Context, path string) (map[string]any, error) {
+	if info, ok := s.deviceInfos[path]; ok {
+		return info, nil
+	}
+	return nil, errors.New("snapshot: no data for " + path)
 }
-func (s *sequentialStub) GetAvailableSelfTests(ctx context.Context, path string) (*smartmontools.SelfTestInfo, error) {
-	return s.delegate.GetAvailableSelfTests(ctx, path)
+
+func (s *snapshotBackend) GetAvailableSelfTests(_ context.Context, path string) (*smartmontools.SelfTestInfo, error) {
+	if tests, ok := s.selfTests[path]; ok {
+		return tests, nil
+	}
+	return nil, errors.New("snapshot: no data for " + path)
 }
-func (s *sequentialStub) EnableSMART(ctx context.Context, path string) error {
-	return s.delegate.EnableSMART(ctx, path)
-}
-func (s *sequentialStub) DisableSMART(ctx context.Context, path string) error {
-	return s.delegate.DisableSMART(ctx, path)
-}
-func (s *sequentialStub) AbortSelfTest(ctx context.Context, path string) error {
-	return s.delegate.AbortSelfTest(ctx, path)
-}
+
+// RunSelfTest, EnableSMART, DisableSMART, AbortSelfTest are write operations
+// and are not cached — the snapshot backend does not execute them.
+func (s *snapshotBackend) RunSelfTest(_ context.Context, _, _ string) error { return nil }
+func (s *snapshotBackend) EnableSMART(_ context.Context, _ string) error    { return nil }
+func (s *snapshotBackend) DisableSMART(_ context.Context, _ string) error   { return nil }
+func (s *snapshotBackend) AbortSelfTest(_ context.Context, _ string) error  { return nil }
