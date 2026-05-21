@@ -13,6 +13,7 @@ type (
 type (
 	Device          = smtypes.Device
 	SMARTInfo       = smtypes.SMARTInfo
+	SmartctlInfo    = smtypes.SmartctlInfo
 	SelfTestInfo    = smtypes.SelfTestInfo
 	DiscoveryResult = smtypes.DiscoveryResult
 )

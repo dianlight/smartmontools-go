@@ -325,6 +325,27 @@ func TestCompareBackend_GetSMARTInfo_MismatchIgnoresComputedFields(t *testing.T)
 	assert.Empty(t, log.warns, "computed fields tagged json:\"-\" should not trigger a mismatch")
 }
 
+func TestCompareBackend_GetSMARTInfo_MismatchIgnoresSmartctlMetadata(t *testing.T) {
+	log := &logRecorder{}
+	// Smartctl is exec-backend metadata; only the master (exec) would have it populated.
+	// The secondary (e.g. lib backend) returns nil. This must not cause a mismatch.
+	master := &mockBackend{name: "master", getSMARTInfoFn: func(_ context.Context, _ string) (*SMARTInfo, error) {
+		return &SMARTInfo{
+			ModelName: "Drive",
+			Smartctl:  &SmartctlInfo{ExitStatus: 0},
+		}, nil
+	}}
+	secondary := &mockBackend{name: "secondary", getSMARTInfoFn: func(_ context.Context, _ string) (*SMARTInfo, error) {
+		return &SMARTInfo{ModelName: "Drive"}, nil
+	}}
+	cb, err := NewCompareBackend([]Backend{master, secondary}, WithLogHandler(log))
+	require.NoError(t, err)
+
+	_, err = cb.GetSMARTInfo(context.Background(), "/dev/sda")
+	require.NoError(t, err)
+	assert.Empty(t, log.warns, "exec-only 'smartctl' metadata should not trigger a mismatch")
+}
+
 func TestCompareBackend_GetSMARTInfo_MismatchLogsWarning(t *testing.T) {
 	log := &logRecorder{}
 	master := &mockBackend{name: "master", getSMARTInfoFn: func(_ context.Context, _ string) (*SMARTInfo, error) {

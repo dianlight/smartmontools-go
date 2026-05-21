@@ -382,12 +382,38 @@ func genericDiscoverDevices(ctx context.Context, b Backend) ([]DiscoveryResult, 
 	return results, nil
 }
 
-// jsonEqual reports whether a and b marshal to identical JSON.
-// Fields tagged json:"-" are excluded, preventing false mismatches from
-// backend-specific computed fields such as DiskType and ExitCodeInfo.
+// comparisonExcludedJSONKeys lists top-level JSON keys that are stripped from
+// both sides before comparison. These are exec-backend-specific metadata fields
+// absent from other backend implementations (e.g. lib backend).
+var comparisonExcludedJSONKeys = []string{"smartctl"}
+
+// jsonNormalize marshals v to JSON, then strips top-level excluded keys so that
+// backend-specific metadata fields do not cause false-positive mismatches.
+// Fields tagged json:"-" are also excluded by json.Marshal.
+func jsonNormalize(v any) ([]byte, error) {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return nil, err
+	}
+	var m any
+	if err = json.Unmarshal(b, &m); err != nil {
+		return nil, err
+	}
+	if mp, ok := m.(map[string]any); ok {
+		for _, key := range comparisonExcludedJSONKeys {
+			delete(mp, key)
+		}
+	}
+	return json.Marshal(m)
+}
+
+// jsonEqual reports whether a and b produce identical JSON after normalization.
+// Fields tagged json:"-" and keys in comparisonExcludedJSONKeys are excluded,
+// preventing false mismatches from backend-specific fields such as DiskType,
+// ExitCodeInfo, and the exec-only "smartctl" metadata block.
 func jsonEqual(a, b any) bool {
-	aj, errA := json.Marshal(a)
-	bj, errB := json.Marshal(b)
+	aj, errA := jsonNormalize(a)
+	bj, errB := jsonNormalize(b)
 	if errA != nil || errB != nil {
 		return false
 	}
@@ -411,11 +437,11 @@ func (c *CompareBackend) logMismatch(ctx context.Context, method, backendName st
 
 // jsonDiff returns a flat map of dot-notation paths → {master, secondary} pairs
 // for every JSON-serializable field where master and secondary differ.
-// Fields tagged json:"-" are excluded (they are not compared).
+// Fields tagged json:"-" and keys in comparisonExcludedJSONKeys are excluded.
 // Returns nil when the values are JSON-equal or cannot be marshaled.
 func jsonDiff(master, secondary any) map[string]any {
-	aj, errA := json.Marshal(master)
-	bj, errB := json.Marshal(secondary)
+	aj, errA := jsonNormalize(master)
+	bj, errB := jsonNormalize(secondary)
 	if errA != nil || errB != nil || bytes.Equal(aj, bj) {
 		return nil
 	}
@@ -424,6 +450,9 @@ func jsonDiff(master, secondary any) map[string]any {
 	_ = json.Unmarshal(bj, &bm)
 	diff := make(map[string]any)
 	collectDiffs("", am, bm, diff)
+	if len(diff) == 0 {
+		return nil
+	}
 	return diff
 }
 
