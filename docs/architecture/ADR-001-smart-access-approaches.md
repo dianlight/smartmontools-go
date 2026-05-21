@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Accepted (Option 1 default, Option 3 implemented as LibBackend)
 
 ## Context
 
@@ -846,25 +846,31 @@ func main() {
 
 ## Implementation Roadmap
 
-### Phase 1: Current State (Option 1)
+### Phase 1: Current State (Option 1) ✅ Complete
 - ✅ Command wrapper implemented
 - ✅ JSON parsing
 - ✅ Cross-platform support
 - ✅ Basic test coverage
+- ✅ Multi-path smartctl binary resolution (NAS platforms)
+- ✅ SAT fallback for USB bridges
+- ✅ Exit code bit decomposition
+- ✅ `--scan-open` → `--scan` fallback
+- ✅ Drive discovery with protocol probe
+- ✅ Wear level normalization
 
-### Phase 2: ioctl Exploration (Option 2)
+### Phase 2: ioctl Exploration (Option 2) ⏭️ Deferred
 - Create Linux ioctl proof-of-concept
 - Benchmark against current implementation
 - Document platform-specific requirements
 - Evaluate feasibility for production
 
-### Phase 3: Library Integration (Option 3)
-- Investigate creating C API for smartmontools
-- Test purego FFI integration
-- Create build system for shared library
-- Benchmark performance
+### Phase 3: Library Integration (Option 3) ✅ Complete
+- ✅ purego FFI integration (no CGO)
+- ✅ Build system for shared library
+- ✅ Benchmark performance
+- ✅ LibBackend implemented with full Backend interface
 
-### Phase 4: Hybrid Implementation (Option 4)
+### Phase 4: Hybrid Implementation (Option 4) ⏭️ Future
 - Design routing architecture
 - Implement backend abstraction
 - Create fallback mechanisms
@@ -872,22 +878,15 @@ func main() {
 
 ## Recommendations
 
-### For Current v0.x Development: **Option 1 (Current Implementation)**
+### For Current Development: **Option 1 (Default) + Option 3 (LibBackend)**
 
 **Rationale:**
-- Proven, stable approach
-- Excellent cross-platform support
-- Low maintenance burden
-- Adequate performance for most use cases
-- Focus development on API stability
+- Option 1: Proven, stable approach, excellent cross-platform support
+- Option 3: Implemented via purego FFI for environments where process spawn overhead is undesirable
+- Both backends implement the same `Backend` interface (ADR-002)
+- Users can choose via `WithBackend()` option
 
-**Improvements to Current Implementation:**
-1. Cache smartctl binary location
-2. Implement connection pooling for batch operations
-3. Add optional caching layer for frequently accessed data
-4. Better error parsing and reporting
-
-### For Future v1.0+: **Option 4 (Hybrid Approach)**
+### For Future v1.0+: **Option 2 (IoctlBackend) or Option 4 (Hybrid)**
 
 **Rationale:**
 - Maximum flexibility for users

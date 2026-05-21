@@ -276,19 +276,15 @@ solidness, and platform reach.
 | Strategy | Maintainability | Solidness | Platform | Effort |
 |----------|----------------|-----------|----------|--------|
 | **D1** Patch-and-Build Pipeline | ★★★ High | ★★★ High | Linux + cross | Medium |
-| **D2** Upstream Fork + CI Sync | ★★★ High | ★★★ High | Linux + cross | Medium-High |
 | **D3** CGO Static Wrapper | ★★☆ Medium | ★★★ High | Linux first | Medium |
 | **D4** Upstream Contribution | ★★★★★ (once merged) | ★★★ High | All | Very High |
 
 ---
 
-##### D1: Patch-and-Build Pipeline (Superseded by D2)
+##### D1: Patch-and-Build Pipeline
 
 Maintain a versioned patch set that adds a shared library target to smartmontools's
 autotools build, without maintaining a permanent fork.
-
-> **Note:** D1 has been superseded by D2 (Upstream Fork with CI Sync). The patch
-> infrastructure remains in `patches/` for reference but is no longer used by CI.
 
 **Patch layout:**
 ```
@@ -411,71 +407,7 @@ an issue via `actions/github-script`.
 | **Maintainability** | High — conflicts detected in CI; regeneration is a single script call |
 | **Solidness** | High — same compiled C++ as smartctl; no source changes besides guarded `main()` |
 | **Platform** | Linux (amd64 + arm64); macOS and FreeBSD via matrix expansion |
-| **Status** | Superseded by D2 — patches retained in `patches/` for reference |
-
----
-
-##### D2: Upstream Fork with CI Sync
-
-Maintain a permanent fork at `github.com/dianlight/smartmontools-sdk` that
-includes the C API shim directly in its source tree. A GitHub Action rebases the
-fork onto upstream weekly.
-
-```
-┌──────────────────┐     ┌─────────────────────────┐
-│  smartmontools/   │     │ smartmontools-sdk/       │
-│  smartmontools    │────>│ (fork + C API layer)     │
-└──────────────────┘     └───────────┬───────────────┘
-                                     │ CI build → libsmartmon.a
-```
-
-**Sync workflow** (in the fork repo):
-```yaml
-name: sync-upstream
-on:
-  schedule:
-    - cron: '0 6 * * 0'
-  workflow_dispatch:
-
-jobs:
-  sync:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          repository: smartmontools/smartmontools
-          fetch-depth: 0
-          token: ${{ secrets.PAT }}
-      - run: |
-          git remote add sdk https://x-access-token:${{ secrets.PAT }}@github.com/dianlight/smartmontools-sdk.git
-          git fetch sdk main
-          git checkout -b sdk-main sdk/main
-          git rebase origin/main || (echo "Rebase failed" >&2 && exit 1)
-          git push sdk main --force-with-lease
-```
-
-Fork-specific additions:
-```
-├── src/
-│   ├── libsmartctl.h       # C API header (added)
-│   ├── libsmartctl.cpp     # API impl (added)
-│   └── Makefile.am         # +libsmartctl.la target (modified)
-└── .github/workflows/
-    ├── build-libsmartctl.yml
-    └── sync-upstream.yml
-```
-
-| | |
-|---|---|
-| **Maintainability** | High — automated rebase; conflicts are visible in CI |
-| **Solidness** | High — same compiled code as upstream |
-| **Platform** | Linux, cross-compile matrix |
-| **Status** | Active — D2 is the sole build strategy |
-
-**Implementation:** The fork lives at `github.com/dianlight/smartmontools-sdk`.
-The `build-libsmartctl.yml` workflow builds from the fork weekly (Sunday 02:00 UTC).
-The `sync-upstream.yml` workflow (in the fork) rebases onto upstream weekly (Sunday 06:00 UTC).
-See `docs/fork/D2-UPSTREAM-FORK.md` for fork setup instructions.
+| **Status** | Retained for reference — patches in `patches/` directory |
 
 ---
 
@@ -572,10 +504,8 @@ Required changes to upstream:
 
 ---
 
-**Recommendation:** **D2 (Upstream Fork with CI Sync)** is the active strategy.
-The fork at `github.com/dianlight/smartmontools-sdk` includes the C API shim
-directly in its source tree and is rebased onto upstream weekly via
-`sync-upstream.yml`. Pursue **D4 (Upstream Contribution)** independently as a
+**Recommendation:** **D1 (Patch-and-Build Pipeline)** is the active strategy for
+building `libsmartctl.so`. Pursue **D4 (Upstream Contribution)** independently as a
 long-term goal.
 
 ### Option E — Native Go Port (v1.0+)
@@ -682,4 +612,3 @@ smartmontools-go/
 - [ADR-001: SMART Data Access Approaches](./ADR-001-smart-access-approaches.md)
 - [ADR-003: Shadow Mode and Telemetry](./ADR-003-shadow-mode-telemetry.md)
 - [ROADMAP](./ROADMAP.md)
-- [D2: Upstream Fork Setup Guide](../fork/D2-UPSTREAM-FORK.md)

@@ -499,26 +499,7 @@ Shells out to the `smartctl` binary and parses its JSON output. Maximum compatib
 ### LibBackend (purego FFI — Linux/macOS)
 
 Loads a pre-built smartmon wrapper shared library (`libsmartmon_go.so` /
-`libsmartmon_go.dylib`) at runtime using [ebitengine/purego](https://github.com/ebitengine/purego) — **no CGO required**.  The shared library wraps the static `libsmartmon.a` from the [dianlight/smartmontools-sdk](https://github.com/dianlight/smartmontools-sdk) releases.
-
-Build the wrapper once:
-
-```sh
-scripts/setup-lib-backend.sh
-export SMARTMON_LIB_PATH=$(pwd)/backends/lib/sdk/libsmartmon_go.dylib  # macOS
-# export SMARTMON_LIB_PATH=$(pwd)/backends/lib/sdk/libsmartmon_go.so  # Linux
-```
-
-Library resolution order in `lib.New()`:
-
-1. `WithLibraryPath(path)` option — always highest priority.
-2. `SMARTMON_LIB_PATH` env var — used if the file exists; a warning is logged
-   and the system search is used as fallback when the file is missing.  A
-   warning is also logged when the library is found in a different standard
-   system directory.
-3. Standard system paths — dynamic linker (`LD_LIBRARY_PATH` /
-   `DYLD_LIBRARY_PATH` / rpath) then well-known absolute paths
-   (`/usr/local/lib`, `/opt/homebrew/lib`, etc.).
+`libsmartmon_go.dylib`) at runtime using [ebitengine/purego](https://github.com/ebitengine/purego) — **no CGO required**.
 
 ```go
 // Automatic resolution (reads SMARTMON_LIB_PATH or searches system paths):
@@ -569,6 +550,7 @@ Mid-term:
 
 Long-term:
 - Optimize performance and reduce process creation overhead for large-scale monitoring setups.
+- Full native Go backend (v1.0) with zero runtime dependencies.
 
 How to help:
 - Add tests that include representative `smartctl --json` outputs (captured from different smartmontools versions/devices).
@@ -583,7 +565,6 @@ This project is licensed under the GNU General Public License v3.0 - see the [LI
 
 - [smartmontools](https://www.smartmontools.org/) — the underlying tool that makes this library possible
 - [DAB-LABS/smart-sniffer](https://github.com/DAB-LABS/smart-sniffer) — several reliability improvements in this library (multi-path binary resolution, SAT fallback, `--scan-open` → `--scan` fallback, `DiscoverDevices`, and exit code bit decomposition) were inspired by the patterns used in the smart-sniffer agent
-- [libgoffi](https://github.com/noctarius/libgoffi) — FFI adapter library for Go (for future enhancements)
 
 ## CI and mise
 

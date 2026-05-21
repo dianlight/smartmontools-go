@@ -100,17 +100,9 @@ ShadowModeReport (primary=exec, secondary=new)
 Loads the pre-built `libsmartmon_go.so` / `libsmartmon_go.dylib` wrapper at runtime.
 Pure Go binary; no CGO.
 
-The wrapper shared library is produced by `scripts/setup-lib-backend.sh`, which:
-1. Downloads the pre-built `libsmartmon.a` static library from
-   [dianlight/smartmontools-sdk](https://github.com/dianlight/smartmontools-sdk) releases.
-2. Compiles `backends/lib/csrc/smartmon_c_api.cpp` (thin C++ wrapper) against it.
-3. Outputs `backends/lib/sdk/libsmartmon_go.{so,dylib}`.
-
 **Delivered**:
 - `backends/lib/lib.go` — `LibBackend` (purego dlopen + symbol binding)
 - `backends/lib/csrc/smartmon_c_api.{h,cpp}` — thin C++ wrapper over `libsmartmon.a`
-- `scripts/setup-lib-backend.sh` — downloads `dianlight/smartmontools-sdk` release
-  and compiles the wrapper
 - `backends/lib/lib_stub.go` — unsupported-platform stub
 - `lib.New(opts ...Option) (*LibBackend, error)` constructor
 
