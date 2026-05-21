@@ -395,6 +395,8 @@ func jsonEqual(a, b any) bool {
 }
 
 // logMismatch logs a warning when a secondary backend returns a different result.
+// The "diff" attribute contains only the JSON-serializable fields that actually
+// differ, making it straightforward to pinpoint which data disagrees.
 // It is a no-op when ctx has already been cancelled.
 func (c *CompareBackend) logMismatch(ctx context.Context, method, backendName string, master, secondary any) {
 	if ctx.Err() != nil {
@@ -403,9 +405,60 @@ func (c *CompareBackend) logMismatch(ctx context.Context, method, backendName st
 	c.log.WarnContext(ctx, "compare: result mismatch",
 		"method", method,
 		"backend", backendName,
-		"master", fmt.Sprintf("%+v", master),
-		"secondary", fmt.Sprintf("%+v", secondary),
+		"diff", jsonDiff(master, secondary),
 	)
+}
+
+// jsonDiff returns a flat map of dot-notation paths → {master, secondary} pairs
+// for every JSON-serializable field where master and secondary differ.
+// Fields tagged json:"-" are excluded (they are not compared).
+// Returns nil when the values are JSON-equal or cannot be marshaled.
+func jsonDiff(master, secondary any) map[string]any {
+	aj, errA := json.Marshal(master)
+	bj, errB := json.Marshal(secondary)
+	if errA != nil || errB != nil || bytes.Equal(aj, bj) {
+		return nil
+	}
+	var am, bm any
+	_ = json.Unmarshal(aj, &am)
+	_ = json.Unmarshal(bj, &bm)
+	diff := make(map[string]any)
+	collectDiffs("", am, bm, diff)
+	return diff
+}
+
+// collectDiffs recursively walks two JSON-decoded values and populates diff
+// with every leaf path where they disagree.
+func collectDiffs(prefix string, a, b any, diff map[string]any) {
+	aj, _ := json.Marshal(a)
+	bj, _ := json.Marshal(b)
+	if bytes.Equal(aj, bj) {
+		return
+	}
+	aMap, aIsMap := a.(map[string]any)
+	bMap, bIsMap := b.(map[string]any)
+	if aIsMap && bIsMap {
+		keys := make(map[string]struct{}, len(aMap)+len(bMap))
+		for k := range aMap {
+			keys[k] = struct{}{}
+		}
+		for k := range bMap {
+			keys[k] = struct{}{}
+		}
+		for k := range keys {
+			child := k
+			if prefix != "" {
+				child = prefix + "." + k
+			}
+			collectDiffs(child, aMap[k], bMap[k], diff)
+		}
+		return
+	}
+	key := prefix
+	if key == "" {
+		key = "(root)"
+	}
+	diff[key] = map[string]any{"master": a, "secondary": b}
 }
 
 // logSecondaryError logs an error when a secondary backend fails.
