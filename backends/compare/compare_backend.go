@@ -39,7 +39,9 @@ type CompareBackend struct {
 // WithLogHandler sets a custom LogAdapter for the compare backend.
 func WithLogHandler(logger LogAdapter) Option {
 	return func(b *CompareBackend) {
-		b.log = logger
+		if logger != nil {
+			b.log = logger
+		}
 	}
 }
 

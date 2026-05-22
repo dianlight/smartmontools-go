@@ -7,7 +7,7 @@
 //
 // The script downloads the pre-built libsmartmon.a static library from
 // https://github.com/dianlight/smartmontools-sdk releases and compiles the
-// thin C++ wrapper (backends/lib/csrc/smartmon_c_api.cpp) into
+// thin C++ wrapper (csrc/smartmon_c_api.cpp) into
 // backends/lib/sdk/libsmartmon_go.{so,dylib}.
 //
 // Then point the backend at it via SMARTMON_LIB_PATH or WithLibraryPath.

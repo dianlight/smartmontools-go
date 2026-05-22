@@ -25,17 +25,26 @@ import smtypes "github.com/dianlight/smartmontools-go/internal/types"
 
 // Shared interface aliases keep the lib backend decoupled from the root package.
 type (
+	// LogAdapter is an alias for smtypes.LogAdapter; it provides a log-handler interface.
 	LogAdapter = smtypes.LogAdapter
-	Backend    = smtypes.Backend
+	// Backend is an alias for smtypes.Backend; it is the pluggable SMART execution interface.
+	Backend = smtypes.Backend
 )
 
 // Shared type aliases reuse the module's SMART domain model in the lib backend.
 type (
-	Device          = smtypes.Device
-	SMARTInfo       = smtypes.SMARTInfo
-	SmartStatus     = smtypes.SmartStatus
-	SmartSupport    = smtypes.SmartSupport
-	AtaSmartData    = smtypes.AtaSmartData
-	SelfTestInfo    = smtypes.SelfTestInfo
+	// Device is an alias for smtypes.Device representing a storage device.
+	Device = smtypes.Device
+	// SMARTInfo is an alias for smtypes.SMARTInfo holding comprehensive SMART data for a device.
+	SMARTInfo = smtypes.SMARTInfo
+	// SmartStatus is an alias for smtypes.SmartStatus representing the overall SMART health status.
+	SmartStatus = smtypes.SmartStatus
+	// SmartSupport is an alias for smtypes.SmartSupport representing SMART availability and enablement.
+	SmartSupport = smtypes.SmartSupport
+	// AtaSmartData is an alias for smtypes.AtaSmartData holding ATA SMART attributes.
+	AtaSmartData = smtypes.AtaSmartData
+	// SelfTestInfo is an alias for smtypes.SelfTestInfo describing available self-tests and their durations.
+	SelfTestInfo = smtypes.SelfTestInfo
+	// DiscoveryResult is an alias for smtypes.DiscoveryResult holding the outcome of probing a device.
 	DiscoveryResult = smtypes.DiscoveryResult
 )

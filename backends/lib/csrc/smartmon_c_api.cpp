@@ -487,6 +487,10 @@ int smartmon_disable_smart(const char * device, const char * dev_type) {
 }
 
 int smartmon_run_selftest(const char * device, const char * dev_type, const char * test_type) {
+    if (!test_type) {
+        tl_last_error = "NULL test_type pointer";
+        return -1;
+    }
     std::lock_guard<std::mutex> lk(g_mutex);
     try {
         auto dev = open_dev(device, dev_type);
