@@ -90,33 +90,25 @@ ShadowModeReport (primary=exec, secondary=new)
 
 ---
 
-## Phase 4 — CGO / purego Library Backend (v0.6)
+## Phase 4 — purego Library Backend (v0.6) ✅ Implemented
 
-**Goal**: Use smartmontools compiled as a shared library. Two sub-options evaluated:
+**Goal**: Use smartmontools compiled as a shared library loaded at runtime via
+[ebitengine/purego](https://github.com/ebitengine/purego) — no CGO required.
 
-### Option A — purego (preferred)
+### Implementation — purego (Option A, implemented)
 
-Load a pre-built `libsmartctl.so` / `.dylib` at runtime using
-[ebitengine/purego](https://github.com/ebitengine/purego). No CGO; pure Go binary.
+Loads the pre-built `libsmartmon_go.so` / `libsmartmon_go.dylib` wrapper at runtime.
+Pure Go binary; no CGO.
 
-**Key deliverables**:
-- `backend/lib/lib_purego.go` — dlopen + symbol binding
-- C API shim (`libsmartctl_api.h` + `libsmartctl_api.cpp`) maintained in a
-  companion repository (`dianlight/libsmartctl`).
-- `NewLibBackend(libraryPath string, ...) (Backend, error)` constructor
-- Packaging docs: how to install `libsmartctl.so` via OS packages or alongside
-  the binary.
+**Delivered**:
+- `backends/lib/lib.go` — `LibBackend` (purego dlopen + symbol binding)
+- `backends/lib/csrc/smartmon_c_api.{h,cpp}` — thin C++ wrapper over `libsmartmon.a`
+- `backends/lib/lib_stub.go` — unsupported-platform stub
+- `lib.New(opts ...Option) (*LibBackend, error)` constructor
 
-### Option B — CGO (fallback)
-
-Direct CGO linking against the C API shim for environments where `purego`
-cannot be used.
-
-**Key deliverables**:
-- `backend/lib/lib_cgo.go` — CGO binding (build tag `cgo`)
-- Build docs for static vs. dynamic linking.
-
-**Consumer impact**: New opt-in backend. Requires `libsmartctl` to be available.
+**Consumer impact**: Opt-in backend. Set `SMARTMON_LIB_PATH` or pass
+`libbackend.WithLibraryPath`. See [README](../../README.md#libbackend-purego-ffi--linuxmacos)
+for setup instructions.
 
 ---
 

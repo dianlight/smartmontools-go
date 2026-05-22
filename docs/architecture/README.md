@@ -15,14 +15,14 @@ An Architecture Decision Record (ADR) is a document that captures an important a
 
 ### [ADR-001: SMART Data Access Approaches](./ADR-001-smart-access-approaches.md)
 
-**Status:** Proposed
+**Status:** Accepted (Option 1 default, Option 3 implemented as LibBackend)
 
 **Summary:** Comprehensive analysis of four different approaches for accessing SMART data from storage devices:
 
-1. **smartctl Command Wrapper (Current)** - Execute external smartctl binary and parse JSON output
-2. **Direct ioctl Access** - Low-level kernel system calls for maximum performance
-3. **Shared Library with FFI** - Use smartmontools as a shared library without CGO
-4. **Hybrid Approach** - Combine ioctl and shared library for optimal flexibility
+1. **smartctl Command Wrapper (Default)** - Execute external smartctl binary and parse JSON output ✅ Implemented
+2. **Direct ioctl Access** - Low-level kernel system calls for maximum performance ⏭️ Deferred
+3. **Shared Library with FFI** - Use smartmontools as a shared library via purego ✅ Implemented as LibBackend
+4. **Hybrid Approach** - Combine ioctl and shared library for optimal flexibility ⏭️ Future
 
 The document includes:
 - Detailed architecture diagrams for each approach
@@ -32,17 +32,15 @@ The document includes:
 - Security and maintenance considerations
 - Recommendations for different use cases
 
-**Key Recommendation:** Continue with Option 1 (smartctl wrapper) for current v0.x development, with a roadmap toward Option 4 (hybrid) for future v1.0+ releases.
-
 ---
 
 ### [ADR-002: Multi-Backend Architecture](./ADR-002-multi-backend-architecture.md)
 
-**Status:** Proposed
+**Status:** Accepted
 
 **Summary:** Defines the `Backend` interface that abstracts SMART operations away from
-any specific implementation. The existing exec/smartctl approach becomes `ExecBackend`.
-New backends (IoctlBackend, LibBackend, NativeBackend) implement the same interface.
+any specific implementation. The existing exec/smartctl approach is `ExecBackend`.
+The purego FFI approach is `LibBackend`. Both implement the same interface.
 `Client` becomes a thin orchestrator. Includes a soft migration strategy across releases
 v0.3–v1.0 with full backward compatibility at every step.
 
@@ -62,7 +60,7 @@ Validate) and includes bundled reporters for slog/tlog, OpenTelemetry, and HTTP 
 
 ### [ADR-004: Automated drivedb.h Tracking](./ADR-004-drivedb-autoupdate.md)
 
-**Status:** Proposed
+**Status:** Accepted
 
 **Summary:** GitHub Actions workflow that monitors the upstream smartmontools
 `lib/drivedb.h` file daily, detects changes via SHA-256 comparison, and automatically

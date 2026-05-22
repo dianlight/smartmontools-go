@@ -69,7 +69,7 @@ type SMARTInfo struct {
 	Temperature                *Temperature                `json:"temperature,omitempty"`
 	PowerOnTime                *PowerOnTime                `json:"power_on_time,omitempty"`
 	PowerCycleCount            int                         `json:"power_cycle_count,omitempty"`
-	Smartctl                   *SmartctlInfo               `json:"smartctl,omitempty"`
+	Smartctl                   *SmartctlInfo               `json:"smartctl,omitempty"` // Exec-backend metadata (smartctl version, exit_status, messages)
 }
 
 // SmartStatus represents the overall SMART health status
