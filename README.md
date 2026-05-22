@@ -8,6 +8,7 @@ A Go library that interfaces with smartmontools to monitor and manage storage de
 
 ![CI](https://github.com/dianlight/smartmontools-go/actions/workflows/ci.yml/badge.svg)
 [![Coverage Status](https://codecov.io/github/dianlight/smartmontools-go/graph/badge.svg?token=1J2VP3FEZ4)](https://codecov.io/github/dianlight/smartmontools-go)
+[![CodeFactor](https://www.codefactor.io/repository/github/dianlight/smartmontools-go/badge)](https://www.codefactor.io/repository/github/dianlight/smartmontools-go)
 ![Stable Release](https://img.shields.io/github/v/release/dianlight/smartmontools-go)
 ![Prerelease](https://img.shields.io/github/v/release/dianlight/smartmontools-go?include_prereleases)
 
