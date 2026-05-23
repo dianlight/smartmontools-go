@@ -107,17 +107,17 @@ This allows the single drivedb.h entry to match multiple similar devices efficie
 
 ### Automated Updates
 
-The database is kept current automatically via two mechanisms:
+The database is kept current automatically via **Renovate** (`.github/renovate.json`) and a
+companion GitHub Actions workflow:
 
-**1. GitHub Actions workflow** (`.github/workflows/drivedb-update.yml`): Runs daily at 06:00 UTC.
-Compares the upstream `drivedb.h` SHA-256 checksum against the embedded copy, then opens a
-pull request when a new revision is available. Each PR includes the full upstream diff for review.
+- **Renovate** monitors the upstream commit SHA for `lib/drivedb.h` via a custom datasource.
+  When a new commit is detected, it opens a PR that updates `DrivedbUpstreamCommit` in
+  `backends/exec/drivedb_version.go`.
+- **`.github/workflows/drivedb-fetch.yml`** is triggered by that PR. It reads the new SHA,
+  downloads the matching `drivedb.h` from upstream, updates `DrivedbUpstreamDate`, and commits
+  both files back to the PR branch.
 
-**2. Renovate** (`.github/renovate.json`): Monitors the upstream commit SHA for `lib/drivedb.h`
-via a custom datasource. When Renovate detects a new commit, it opens a PR that updates
-`DrivedbUpstreamCommit` in `backends/exec/drivedb_version.go`. A companion workflow
-(`.github/workflows/drivedb-fetch.yml`) then automatically downloads the matching `drivedb.h`
-and updates `DrivedbUpstreamDate`.
+Each PR includes the full upstream diff for review before merging.
 
 ### Manual Update
 

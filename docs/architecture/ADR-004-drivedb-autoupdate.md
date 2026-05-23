@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Amended — see amendment below.
 
 ## Context
 
@@ -130,7 +130,7 @@ log.Info("drivedb loaded",
 )
 ```
 
-### Renovate / Dependabot as Alternative
+### Renovate / Dependabot as Alternative (now primary)
 
 [Renovate](https://docs.renovatebot.com/) supports custom datasources that track
 commit SHAs. The `renovate.json` configuration includes:
@@ -149,9 +149,18 @@ When Renovate detects a new upstream SHA, it opens a PR updating only
 3. Updates `DrivedbUpstreamDate` from the GitHub commits API.
 4. Commits both files back to the PR branch.
 
-This approach is complementary to the standalone `drivedb-update.yml` workflow:
-both may be active simultaneously without conflict (Renovate deduplicates
-open PRs on the same branch).
+---
+
+## Amendment: Removal of `drivedb-update.yml` (2026-05-23)
+
+The standalone `drivedb-update.yml` workflow described in the original decision was
+**removed** because it duplicated the Renovate + `drivedb-fetch.yml` flow, creating
+competing PRs for the same upstream changes.
+
+**Sole automated update mechanism going forward**: Renovate + `drivedb-fetch.yml`.
+
+The `drivedb-update.yml`-based flow described above under "Decision" is retained here
+for historical reference only.
 
 ### Validating Updated drivedb.h
 
