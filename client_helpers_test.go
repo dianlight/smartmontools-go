@@ -5,7 +5,7 @@ import (
 	osexec "os/exec"
 	"testing"
 
-	smtypes "github.com/dianlight/smartmontools-go/internal/types"
+	smtypes "github.com/dianlight/smartmontools-go/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

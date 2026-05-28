@@ -15,7 +15,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	smtypes "github.com/dianlight/smartmontools-go/internal/types"
+	smtypes "github.com/dianlight/smartmontools-go/types"
 )
 
 var _ Backend = (*LibBackend)(nil)
