@@ -8,6 +8,25 @@ A Go library that interfaces with smartmontools to monitor and manage storage de
 ![Stable Release](https://img.shields.io/github/v/release/dianlight/smartmontools-go)
 ![Prerelease](https://img.shields.io/github/v/release/dianlight/smartmontools-go?include_prereleases)
 
+---
+
+> **⚠️ This repository has moved.**
+>
+> `smartmontools-go` now lives inside
+> [`dianlight/smartmontools-sdk`](https://github.com/dianlight/smartmontools-sdk)
+> as [`bindings/go/`](https://github.com/dianlight/smartmontools-sdk/tree/main/bindings/go),
+> module path `github.com/dianlight/smartmontools-sdk/bindings/go`, tagged
+> `bindings/go/vX.Y.Z`. This was done to resolve a circular build-time
+> dependency between this repo and the SDK repo — see
+> [smartmontools-sdk#17](https://github.com/dianlight/smartmontools-sdk/issues/17)
+> and [smartmontools-sdk#18](https://github.com/dianlight/smartmontools-sdk/pull/18).
+>
+> `v0.4.2` is the final release here. No new development happens in this
+> repository going forward — see [DEPRECATED.md](DEPRECATED.md) for the full
+> migration notes, including the import-path rewrite recipe.
+
+---
+
 ## Features
 
 - 🔍 **Device Scanning**: Automatically detect available storage devices
