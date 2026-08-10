@@ -37,6 +37,6 @@ go.work.sum
 # .idea/
 # .vscode/
 
-# smartmontools-sdk artifacts (populated by scripts/setup-lib-backend.sh)
+# smartmontools-sdk artifacts (pre-built wrapper from smartmontools-sdk releases)
 backends/lib/sdk/
 .playwright-mcp/

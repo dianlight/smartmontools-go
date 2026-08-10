@@ -54,18 +54,14 @@ Download and install from [smartmontools.org](https://www.smartmontools.org/)
 it loads a pre-built smartmon wrapper shared library at runtime. The library is available for:
 
 - **macOS (Apple silicon)**: ships pre-built with the module at `backends/lib/sdk/libsmartmon_go.dylib`
-- **Linux / other platforms**: build the wrapper once from the repository root:
+- **Linux / other platforms**: download the pre-built wrapper from a
+  [dianlight/smartmontools-sdk](https://github.com/dianlight/smartmontools-sdk) release tarball —
+  the SDK builds `libsmartmon_go.so` from this repo's `backends/lib/csrc/` sources at a pinned
+  smartmontools-go tag.
 
-```bash
-scripts/setup-lib-backend.sh
-```
+The wrapper's C ABI is a documented stability contract — see `backends/lib/csrc/README.md`.
 
-The script downloads the correct `libsmartmon.a` static library from
-[dianlight/smartmontools-sdk](https://github.com/dianlight/smartmontools-sdk) releases and
-compiles the thin C++ wrapper in `backends/lib/csrc/` into
-`backends/lib/sdk/libsmartmon_go.so`.
-
-Point the backend at the compiled library via the `SMARTMON_LIB_PATH` environment variable or
+Point the backend at the library via the `SMARTMON_LIB_PATH` environment variable or
 `libbackend.WithLibraryPath(...)`. See [Library Resolution Order](#library-resolution-order) below.
 
 ## Installation
@@ -389,7 +385,7 @@ When `WithLibraryPath` is not set, `libbackend.New()` resolves the library in th
 # macOS — using the pre-built library shipped with the module
 SMARTMON_LIB_PATH=backends/lib/sdk/libsmartmon_go.dylib go run .
 
-# Linux — after running scripts/setup-lib-backend.sh
+# Linux — wrapper from a smartmontools-sdk release tarball
 SMARTMON_LIB_PATH=backends/lib/sdk/libsmartmon_go.so go run .
 ```
 

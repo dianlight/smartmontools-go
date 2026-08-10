@@ -3,9 +3,9 @@
 // Package main demonstrates using the LibBackend (SDK) that loads the smartmon
 // wrapper library at runtime via purego — no CGO required.
 //
-// Build the wrapper library first (from repository root):
-//
-//	scripts/setup-lib-backend.sh
+// Obtain the wrapper library from a dianlight/smartmontools-sdk release tarball
+// (macOS Apple silicon also ships a pre-built copy at
+// backends/lib/sdk/libsmartmon_go.dylib).
 //
 // Run the example with automatic library resolution (from repository root):
 //
@@ -79,8 +79,7 @@ func main() {
 	if err != nil {
 		fmt.Println(red(fmt.Sprintf("✗ Failed to load smartmon wrapper: %v", err)))
 		fmt.Println()
-		fmt.Println("Build the wrapper library with:")
-		fmt.Println("  scripts/setup-lib-backend.sh")
+		fmt.Println("Download the wrapper library from a dianlight/smartmontools-sdk release tarball.")
 		fmt.Println("Then set SMARTMON_LIB_PATH or copy to a standard library directory.")
 		os.Exit(1)
 	}

@@ -1,13 +1,10 @@
 // Package lib provides a Backend implementation that loads the smartmon wrapper
 // library via purego (no CGO required). It is available on Linux and macOS.
 //
-// Build the wrapper library once:
-//
-//	scripts/setup-lib-backend.sh
-//
-// The script downloads the correct dianlight/smartmontools-sdk release for the
-// current platform, installs the missing smartmon_config.h, and compiles the
-// thin C++ wrapper into backends/lib/sdk/libsmartmon_go.{so,dylib}.
+// The wrapper shared library (libsmartmon_go.{so,dylib}) is built and shipped
+// by dianlight/smartmontools-sdk release tarballs, pinned to a specific
+// smartmontools-go tag. See backends/lib/csrc/README.md for the C ABI
+// stability contract.
 //
 // # Library resolution order
 //

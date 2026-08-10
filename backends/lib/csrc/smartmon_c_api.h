@@ -1,5 +1,20 @@
 // smartmon_c_api.h – extern "C" bridge between CGO and libsmartmon.
 //
+// ## ABI STABILITY CONTRACT
+//
+// The symbols declared in this header are a stable C ABI, frozen as the
+// backwards-compatible baseline from smartmontools-go v0.4.1 onward.
+//
+// Rules:
+//   - The ABI is ADD-ONLY across tagged releases: never remove or rename an
+//     exported symbol, and never change a signature, without a major-version
+//     bump of smartmontools-go.
+//   - Any ABI change must be coordinated with a rebuild of the wrapper in
+//     dianlight/smartmontools-sdk and a version bump of SRAT; otherwise SRAT's
+//     purego backend silently falls back to the exec backend.
+//   - The authoritative contract, including the full symbol table, lives in
+//     backends/lib/csrc/README.md.
+//
 // All functions are thread-safe through an internal global mutex.
 // The smart_interface singleton is initialised once per process; call
 // smartmon_init() before any other function.

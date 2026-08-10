@@ -14,9 +14,9 @@
 //
 // # Prerequisites
 //
-// Build the wrapper shared library once:
-//
-//	scripts/setup-lib-backend.sh
+// Obtain the wrapper shared library from a dianlight/smartmontools-sdk release
+// tarball (macOS Apple silicon also ships one at
+// backends/lib/sdk/libsmartmon_go.dylib).
 //
 // # Running
 //
@@ -102,8 +102,7 @@ func main() {
 	if err != nil {
 		fmt.Println(red(fmt.Sprintf("✗ Failed to load smartmon wrapper: %v", err)))
 		fmt.Println()
-		fmt.Println("Build the wrapper library with:")
-		fmt.Println("  scripts/setup-lib-backend.sh")
+		fmt.Println("Download the wrapper library from a dianlight/smartmontools-sdk release tarball.")
 		fmt.Println("Then set SMARTMON_LIB_PATH or pass -lib /path/to/libsmartmon_go.so")
 		os.Exit(1)
 	}

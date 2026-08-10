@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- Documented the C ABI stability contract for the `libsmartmon_go` wrapper in
+  `backends/lib/csrc/README.md` and `smartmon_c_api.h`. The 11 exported symbols
+  are the backwards-compatible baseline from `v0.4.1`; the ABI is add-only and
+  any symbol/signature change requires a major-version bump plus coordination
+  with the `dianlight/smartmontools-sdk` wrapper build and SRAT.
+
+### Changed
+- Removed stale references to the deleted `scripts/setup-lib-backend.sh` from
+  docs, examples, and comments; the wrapper is now obtained from
+  `dianlight/smartmontools-sdk` release tarballs.
+
 ## [0.4.0] - [Unreleased]
 
 ### Breaking Changes

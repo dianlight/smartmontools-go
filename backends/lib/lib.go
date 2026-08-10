@@ -1,18 +1,17 @@
 //go:build linux || darwin
 
 // Package lib provides a Backend implementation that loads the smartmon wrapper
-// library via purego (no CGO required). Build the wrapper library once with:
+// library via purego (no CGO required).
 //
-//	scripts/setup-lib-backend.sh
-//
-// The script downloads the pre-built libsmartmon.a static library from
-// https://github.com/dianlight/smartmontools-sdk releases and compiles the
-// thin C++ wrapper (backends/lib/csrc/smartmon_c_api.cpp) into
-// backends/lib/sdk/libsmartmon_go.{so,dylib}.
+// The wrapper shared library (libsmartmon_go.{so,dylib}) is built and shipped
+// by dianlight/smartmontools-sdk release tarballs, pinned to a specific
+// smartmontools-go tag. On macOS (Apple silicon) a pre-built copy also ships
+// with this module at backends/lib/sdk/libsmartmon_go.dylib.
 //
 // Then point the backend at it via SMARTMON_LIB_PATH or WithLibraryPath.
 //
-//go:generate ../../scripts/setup-lib-backend.sh
+// The C ABI consumed by this package is a documented stability contract; see
+// backends/lib/csrc/README.md.
 package lib
 
 import (
@@ -69,13 +68,12 @@ type libFuncs struct {
 type Option func(*LibBackend)
 
 // LibBackend implements Backend by loading the smartmon wrapper library via
-// purego at runtime. No CGO is required. Build the wrapper once with:
+// purego at runtime. No CGO is required.
 //
-//	scripts/setup-lib-backend.sh
-//
-// The script downloads libsmartmon.a from github.com/dianlight/smartmontools-sdk
-// releases and compiles the thin C++ wrapper into
-// backends/lib/sdk/libsmartmon_go.{so,dylib}.
+// The wrapper (libsmartmon_go.{so,dylib}) is built and shipped by
+// github.com/dianlight/smartmontools-sdk release tarballs, pinned to a
+// specific smartmontools-go tag. See backends/lib/csrc/README.md for the
+// C ABI stability contract.
 type LibBackend struct {
 	libHandle  uintptr
 	libPath    string
@@ -481,7 +479,7 @@ func resolveLibPath() (string, error) {
 			return path, nil
 		}
 	}
-	return "", errors.New("smartmon wrapper library (libsmartmon_go.{so,dylib}) not found; build it with scripts/setup-lib-backend.sh which downloads libsmartmon.a from github.com/dianlight/smartmontools-sdk and compiles the wrapper, then set SMARTMON_LIB_PATH or copy to a standard library directory")
+	return "", errors.New("smartmon wrapper library (libsmartmon_go.{so,dylib}) not found; obtain the pre-built wrapper from a dianlight/smartmontools-sdk release tarball (see backends/lib/csrc/README.md), then set SMARTMON_LIB_PATH, pass WithLibraryPath, or copy it to a standard library directory")
 }
 
 // findSystemLibPath returns the first library found among defaultLibPaths.

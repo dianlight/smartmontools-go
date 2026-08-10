@@ -44,13 +44,10 @@ runtime. The shared library is a thin C++ wrapper that links against the
 pre-built libsmartmon.a static library published in
 github.com/dianlight/smartmontools-sdk releases.
 
-Build the wrapper library once with the provided setup script:
-
-	scripts/setup-lib-backend.sh
-
-The script downloads the correct SDK archive for the current platform, installs
-the missing smartmon_config.h, and compiles the wrapper into
-backends/lib/sdk/libsmartmon_go.{so,dylib}.
+The wrapper is built and shipped by smartmontools-sdk release tarballs, pinned
+to a specific smartmontools-go tag; macOS (Apple silicon) additionally ships a
+pre-built copy at backends/lib/sdk/libsmartmon_go.dylib. The C ABI consumed at
+runtime is a documented stability contract — see backends/lib/csrc/README.md.
 
 # Library Resolution Order
 
